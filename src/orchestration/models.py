@@ -140,19 +140,7 @@ class Service(BaseModel):
     name: str
     service_name: str  # Reference to ServiceDefinition
     host: str
-
-    image: Optional[str] = None
-    depends_on: List[str] = Field(default_factory=list)
-    command: Optional[List[str] | str] = None
-    entrypoint: Optional[List[str] | str] = None
-    env_file: Optional[str] = None
-    environment: Dict[str, Any] = Field(default_factory=dict)
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-    # informational only in this model, the image, environment, etc.
-    # is already set at this point
-    variety: Optional[str] = None
-    profile: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
 
 
 class ServiceInformation(BaseModel):

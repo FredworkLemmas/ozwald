@@ -8,7 +8,7 @@ FROM alpine:3.20
 RUN apk add --no-cache bash iproute2
 
 # Copy a plain script file to avoid reliance on Dockerfile heredoc features
-COPY dockerfiles/simple_test_entrypoint.sh /entrypoint.sh
+COPY dockerfiles/scripts/simple_test_1/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]

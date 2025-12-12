@@ -1,0 +1,14 @@
+# Purpose: Minimal test container that prints hostname, IP address(es),
+# and UTC time every 30 seconds.
+# Notes: Keep image small; implement the loop in Bash as requested.
+
+FROM alpine:3.20
+
+# Install bash and ip utility (from iproute2) for reliable IP address listing
+RUN apk add --no-cache bash iproute2
+
+# Copy a plain script file to avoid reliance on Dockerfile heredoc features
+COPY dockerfiles/scripts/test_env_and_vols/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]

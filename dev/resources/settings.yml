@@ -44,6 +44,17 @@ services:
     description: Simple test service
     image: 'simple_test_1'
 
+  - name: test_env_and_vols
+    type: container
+    description: Test environment and volumes
+    image: 'test_env_and_vols'
+    environment:
+      TEST_ENV_VAR: 'test_env_var_value'
+      ANOTHER_TEST_ENV_VAR: 'another_test_env_var_value'
+      FILE_LISTING_PATHS: '/solar_system'
+    volumes:
+      - "dev/resources/solar_system:/solar_system"
+
   - name: qwen1.5-vllm
     type: container
     description: DeepSeek Qwen 1.5B

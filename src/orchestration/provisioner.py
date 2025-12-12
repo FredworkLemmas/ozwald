@@ -250,6 +250,9 @@ class SystemProvisioner:
                             updated = True
 
                             try:
+                                logger.info(
+                                    f"starting service: {svc_info.name}"
+                                )
                                 service_instance.start()
                             except Exception as e:
                                 logger.error(
@@ -402,11 +405,7 @@ class SystemProvisioner:
         # Mark as in-progress
         request.profile_in_progress = True
         request.profile_started_at = datetime.now()
-        try:
-            self._profiler_request_cache.update_profile_request(request)
-        except Exception:
-            # If we cannot mark it, still proceed to avoid being stuck
-            pass
+        self._profiler_request_cache.update_profile_request(request)
 
         # Determine targets
         targets: List[ConfiguredServiceIdentifier] = []
@@ -504,10 +503,7 @@ class SystemProvisioner:
         self._wait_for_stop_completed(inst_name, timeout=60.0)
 
         # After stop, clear cache to keep system unloaded
-        try:
-            self._active_services_cache.set_services([])
-        except Exception:
-            pass
+        self._active_services_cache.set_services([])
 
     def _wait_for_start_completed(
         self, instance_name: str, timeout: float = 60.0
@@ -588,18 +584,12 @@ class SystemProvisioner:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     yaml.safe_dump(data, f, sort_keys=True)
                 # Restrict permissions on the new file
-                try:
-                    os.chmod(tmp_path, 0o600)
-                except Exception:
-                    pass
+                os.chmod(tmp_path, 0o600)
                 os.replace(tmp_path, path)
             finally:
                 # In case of exceptions before replace, try to clean up
-                try:
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
-                except Exception:
-                    pass
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
         except Exception as e:
             logger.error(f"Failed to write profiler data to '{path}': {e}")
 
