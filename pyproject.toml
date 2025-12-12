@@ -1,0 +1,150 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ozwald"
+version = "0.0.1"
+authors = [
+    {name = "Fred McDavid", email = "fred@frameworklabs.us"},
+]
+description = "Yellow brick roads to LLM assistant composition and orchestration."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
+keywords = ["ozwald", "LLM", "assistant", "orchestration", "composition"]
+dependencies = [
+    "invocate>=0.2.1",
+    "attrs>=21.0.0",
+    "requests>=2.32.5",
+    "PyYAML>=6.0.1",
+    "psutil>=7.1.3",
+    "pydantic>=2.12.5",
+    "nvidia-ml-py>=13.580.82",
+    "amdsmi>=6.4.4",
+    "python-dotenv>=1.2.1",
+    "fastapi>=0.121.0",
+    "redis>=7.0.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-docker-tools",
+    "mkdocs",
+    "coverage",
+    "pre-commit",
+    "ruff",
+    "mypy",
+    "bandit[toml]",
+    "codespell",
+    "tox",
+    "httpx"
+]
+docs = [
+]
+
+[project.urls]
+Homepage = "https://github.com/FredworkLemmas/ozwald.git"
+Repository = "https://github.com/FredworkLemmas/ozwald.git"
+"Bug Tracker" = "https://github.com/FredworkLemmas/ozwald.git/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+# Ozwald command line utility
+ozwald = "command.ozwald:main"
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+fix = true
+preview = true
+lint.select = ["E", "F", "W", "I", "UP", "PT", "B", "SIM", "C4", "PIE"]
+lint.ignore = [
+  "E203",
+  "B905",
+]
+exclude = [
+  ".git", ".mypy_cache", ".pytest_cache", "build", "dist", "dev/documentation/site"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "T201"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "api", "command", "config", "context", "hosts", "orchestration", "services", "util"
+]
+combine-as-imports = true
+force-wrap-aliases = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.pytest.ini_options]
+addopts = "-ra -q -m 'not integration'"
+testpaths = ["tests"]
+filterwarnings = [
+  "error::DeprecationWarning",
+  "error::FutureWarning",
+  "ignore:.*distutils.*:DeprecationWarning",
+]
+markers = [
+  "integration: marks tests that require external services (deselect with '-m \"not integration\"')",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["src/ozwald.egg-info/*", "src/**/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 85
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == \"__main__\":",
+  "def __repr__\\(\\):",
+  "def __str__\\(\\):",
+  "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+show_error_codes = true
+pretty = true
+plugins = []
+disallow_untyped_defs = false
+
+[tool.bandit]
+targets = ["src"]
+exclude = ["tests/**", "dev/documentation/site"]

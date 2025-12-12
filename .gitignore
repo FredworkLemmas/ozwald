@@ -1,0 +1,17 @@
+# Python
+*/__pycache__/
+*.pyc
+*.egg-info/
+
+# IDE/Dev
+.idea/
+.aiassistant/
+.junie/
+.env
+
+# testing
+.coverage
+
+exports/
+
+dev/documentation/site/

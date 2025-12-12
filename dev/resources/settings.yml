@@ -1,0 +1,133 @@
+---
+hosts:
+  - name: jamma
+    ip: 192.168.0.211
+
+  - name: bitty
+    ip: 192.168.0.254
+
+  - name: daneel
+    ip: 192.168.0.214
+
+  - name: localhost
+    ip: 127.0.0.1
+
+provisioners:
+  - name: bitty
+    host: bitty
+    cache:
+      type: redis
+      parameters:
+        host: jamma
+        port: 6679
+        db: 0
+  - name: jamma
+    host: jamma
+    cache:
+      type: redis
+      parameters:
+        host: ozwald-provisioner-redis
+        port: 6379
+        db: 0
+  - name: daneel
+    host: daneel
+    cache:
+      type: redis
+      parameters:
+        host: jamma
+        port: 6379
+        db: 0
+
+services:
+  - name: simple_test_1
+    type: container
+    description: Simple test service
+    image: 'simple_test_1'
+
+  - name: qwen1.5-vllm
+    type: container
+    description: DeepSeek Qwen 1.5B
+    varieties:
+      nvidia:
+        image: 'openai-api-vllm.nvidia'
+        environment:
+          GPU: true
+      amdgpu:
+        image: 'openai-api-vllm.amdgpu'
+        environment:
+          GPU: true
+      cpu-only:
+        image: 'openai-api-vllm.cpu-only'
+        environment:
+          GPU: false
+    environment:
+      MODEL_NAME: "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+    profiles:
+      embed:
+        environment:
+          CPU_OFFLOAD_GB: ""
+          GPU_MEMORY_UTILIZATION: 0.7
+          MAX_MODEL_LEN: 1100
+      no-gpu:
+        environment:
+          MAX_MODEL_LEN: 45000
+      fast-gpu:
+        environment:
+          CPU_OFFLOAD_GB: ""
+          GPU_MEMORY_UTILIZATION: 0.9
+      max-context-window:
+        environment:
+          MAX_MODEL_LEN: ""
+      small-context-window:
+        environment:
+          MAX_MODEL_LEN: 15000
+
+  - name: qwen7-vllm
+    type: container
+    description: DeepSeek Qwen 7B
+    varieties:
+      nvidia:
+        image: 'openai-api-vllm.nvidia'
+        environment:
+          GPU: true
+      amdgpu:
+        image: 'openai-api-vllm.amdgpu'
+        environment:
+          GPU: true
+      cpu-only:
+        image: 'openai-api-vllm.cpu-only'
+        environment:
+          GPU: false
+    environment:
+      MODEL_NAME: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    profiles:
+      no-gpu:
+        environment:
+          MAX_MODEL_LEN: 45000
+      fast-gpu:
+        environment:
+          CPU_OFFLOAD_GB: ""
+          GPU_MEMORY_UTILIZATION: 0.9
+      max-context-window:
+        environment:
+          MAX_MODEL_LEN: ""
+      small-context-window:
+        environment:
+          MAX_MODEL_LEN: 15000
+  - name: fiction-sources
+    type: source-files
+    description: Fiction sources in EPUB format
+    environment:
+      DIRECTORY: sources/
+  - name: chunker
+    type: container
+    description: Chunker service
+    environment:
+      SOURCES: ['fiction-sources']
+      CHUNK_SIZE: 1000
+      CHUNK_OVERLAP: 500
+  - name: sqlite-vector
+    type: container
+    description: SQLite vector database
+    environment:
+      DIMENSION: 768
