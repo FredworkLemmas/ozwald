@@ -351,7 +351,7 @@ class ContainerService(BaseProvisionableService):
     def _get_effective_environment(
         self, service_info: ServiceInformation
     ) -> dict:
-        service_def = self._get_service_definition(service_info)
+        service_def = self.get_service_definition()
         variety = self.get_variety()
         resolved = self._resolve_effective_fields(
             service_def, service_info.profile, variety
@@ -364,7 +364,7 @@ class ContainerService(BaseProvisionableService):
             return self.container_image
         try:
             service_info = self.get_service_information()
-            service_def = self._get_service_definition(service_info)
+            service_def = self.get_service_definition()
             resolved = self._resolve_effective_fields(
                 service_def, service_info.profile, service_info.variety
             )
@@ -375,7 +375,7 @@ class ContainerService(BaseProvisionableService):
     def get_effective_depends_on(self) -> list[str]:
         try:
             si = self.get_service_information()
-            sd = self._get_service_definition(si)
+            sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
                 sd, si.profile, si.variety
             )
@@ -386,7 +386,7 @@ class ContainerService(BaseProvisionableService):
     def get_effective_command(self) -> Any:
         try:
             si = self.get_service_information()
-            sd = self._get_service_definition(si)
+            sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
                 sd, si.profile, si.variety
             )
@@ -397,7 +397,7 @@ class ContainerService(BaseProvisionableService):
     def get_effective_entrypoint(self) -> Any:
         try:
             si = self.get_service_information()
-            sd = self._get_service_definition(si)
+            sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
                 sd, si.profile, si.variety
             )
@@ -408,7 +408,7 @@ class ContainerService(BaseProvisionableService):
     def get_effective_env_file(self) -> list[str]:
         try:
             si = self.get_service_information()
-            sd = self._get_service_definition(si)
+            sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
                 sd, si.profile, si.variety
             )
