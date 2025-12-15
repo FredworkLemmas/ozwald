@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Any, ClassVar
 
+from config.reader import SystemConfigReader
 from hosts.resources import HostResources
 from orchestration.models import ServiceInformation, ServiceStatus
 from orchestration.service import BaseProvisionableService
@@ -482,6 +483,7 @@ class ContainerService(BaseProvisionableService):
             + vol_opts
             + [f"ozwald-{image}"]
         )
+        logger.info("Container start command: %s", " ".join(cmd))
         return cmd
 
     # --- Accessors for container configuration ---
@@ -496,7 +498,16 @@ class ContainerService(BaseProvisionableService):
             return None
 
     def get_container_volumes(self) -> list[str] | None:
-        return self.container_volumes
+        if self.container_volumes is not None:
+            return self.container_volumes
+        # Fallback to config-defined volumes (already normalized by reader)
+        try:
+            service_def = SystemConfigReader.singleton().get_service_by_name(
+                self.get_service_information().service
+            )
+            return (service_def.volumes or []) if service_def else []
+        except Exception:
+            return None
 
     def get_internal_container_port(self) -> int | None:
         return self.container_port__internal

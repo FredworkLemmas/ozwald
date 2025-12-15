@@ -231,6 +231,7 @@ def test_container_env_and_volumes(docker_prereq, env_for_daemon):
     target = None
     for item in listings:
         if item.get("directory") == "/solar_system":
+            print("found solar system dir")
             target = item
             break
     assert target is not None, "No listing for /solar_system in YAML output"
@@ -242,6 +243,9 @@ def test_container_env_and_volumes(docker_prereq, env_for_daemon):
     # test is intentionally specific; the implementation may evolve to
     # satisfy it (e.g., recursive listing).
     names = {f.get("filename") for f in files}
+
+    print(f"files: {files}")
+    print(f"names: {names}")
 
     # Read expected filenames from dev resources for clarity and
     # drift resistance; we only care about file basenames.

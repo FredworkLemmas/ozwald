@@ -53,7 +53,9 @@ services:
       ANOTHER_TEST_ENV_VAR: 'another_test_env_var_value'
       FILE_LISTING_PATHS: '/solar_system'
     volumes:
-      - "dev/resources/solar_system:/solar_system"
+      - name: solar_system
+        target: /solar_system
+        read_only: true
 
   - name: qwen1.5-vllm
     type: container
@@ -142,3 +144,8 @@ services:
     description: SQLite vector database
     environment:
       DIMENSION: 768
+
+volumes:
+  solar_system:
+    type: bind
+    source: ${SETTINGS_FILE_DIR}/solar_system

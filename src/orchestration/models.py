@@ -110,6 +110,9 @@ class ServiceDefinition(BaseModel):
     entrypoint: Optional[List[str] | str] = None
     env_file: Optional[List[str]] = Field(default_factory=list)
     environment: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    # List of normalized volume mount strings ready for docker CLI, e.g.,
+    # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
+    volumes: Optional[List[str]] = Field(default_factory=list)
     profiles: Optional[Dict[str, ServiceDefinitionProfile]] = Field(
         default_factory=dict
     )
@@ -190,6 +193,8 @@ class OzwaldConfig(BaseModel):
     hosts: List[Host] = Field(default_factory=list)
     services: List[ServiceDefinition] = Field(default_factory=list)
     provisioners: List[Provisioner] = Field(default_factory=list)
+    # Top-level named volume specifications (parsed/normalized by reader)
+    volumes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
 
 # ============================================================================

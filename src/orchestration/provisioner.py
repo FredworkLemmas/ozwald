@@ -1,5 +1,6 @@
 import os
 import signal
+import subprocess
 import tempfile
 import time
 from datetime import datetime
@@ -83,6 +84,11 @@ class SystemProvisioner:
             _system_provisioner = cls(
                 config_reader=config_reader, cache=provisioner_cache
             )
+            # Prepare NFS mounts defined at top-level volumes before use
+            try:
+                _system_provisioner._prepare_nfs_mounts()
+            except Exception as e:
+                logger.error("Failed to prepare NFS mounts: %s", e)
         return _system_provisioner
 
     def run_backend_daemon(self):
@@ -389,6 +395,71 @@ class SystemProvisioner:
             time.sleep(BACKEND_DAEMON_SLEEP_TIME)
 
         logger.info("Provisioner backend daemon stopped.")
+
+    # ------------------------------------------------------------------
+    # Storage preparation (NFS)
+    # ------------------------------------------------------------------
+
+    def _prepare_nfs_mounts(self) -> None:
+        """Mount any NFS volumes defined in the configuration.
+
+        Each NFS volume is mounted to
+        ${OZWALD_NFS_MOUNTS}/${volume_name} (default root: /exports).
+        Idempotent: skips if already mounted.
+        """
+        vols = getattr(self.config_reader, "volumes", {}) or {}
+        if not vols:
+            return
+        mount_root = os.environ.get("OZWALD_NFS_MOUNTS", "/exports")
+        os.makedirs(mount_root, exist_ok=True)
+        for name, spec in vols.items():
+            if spec.get("type") != "nfs":
+                continue
+            server = spec.get("server")
+            path = spec.get("path")
+            opts = spec.get("options")
+            mountpoint = os.path.join(mount_root, name)
+            os.makedirs(mountpoint, exist_ok=True)
+            if self._is_mountpoint(mountpoint):
+                continue
+            # Build mount command
+            src = f"{server}:{path}"
+            cmd = ["mount", "-t", "nfs"]
+            if opts:
+                if isinstance(opts, dict):
+                    # dict to comma-separated k=v
+                    flat = ",".join(f"{k}={v}" for k, v in opts.items())
+                    cmd += ["-o", flat]
+                elif isinstance(opts, str):
+                    cmd += ["-o", opts]
+            cmd += [src, mountpoint]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to mount NFS {src} -> {mountpoint}: "
+                    f"{result.stderr or result.stdout}"
+                )
+            logger.info("Mounted NFS %s -> %s", src, mountpoint)
+
+    def _is_mountpoint(self, path: str) -> bool:
+        try:
+            # Prefer /proc/self/mounts check for robustness
+            mp = False
+            with open("/proc/self/mounts") as f:
+                for line in f:
+                    try:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[1] == path:
+                            mp = True
+                            break
+                    except Exception:
+                        continue
+            if mp:
+                return True
+            # Fallback to os.path.ismount
+            return os.path.ismount(path)
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Profiling support
