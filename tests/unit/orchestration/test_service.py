@@ -4,6 +4,7 @@ import pytest
 
 from orchestration.models import Cache, ServiceInformation, ServiceStatus
 from orchestration.service import BaseProvisionableService
+from services.container import ContainerService
 
 
 class FakeActiveServicesCache:
@@ -55,7 +56,7 @@ class DummyProvisioner:
         return self._cache
 
 
-class TestService(BaseProvisionableService):
+class TestService(ContainerService):
     __test__ = False  # prevent pytest from treating this as a test container
     service_type = "test"
     container_image: str = "alpine:latest"
@@ -89,14 +90,16 @@ def patch_system(monkeypatch):
     """Patch out external systems that BaseProvisionableService touches."""
     # Ensure we never talk to real Redis-backed cache
     import orchestration.service as svc_mod
+    import services.container as cont_mod
 
-    monkeypatch.setattr(svc_mod, "ActiveServicesCache", FakeActiveServicesCache)
+    # Patch in container module; Base no longer uses ActiveServicesCache
+    monkeypatch.setattr(cont_mod, "ActiveServicesCache", FakeActiveServicesCache)
 
-    # Short-circuit GPU detection
-    monkeypatch.setattr(svc_mod.HostResources, "installed_gpu_drivers", list)
+    # Short-circuit GPU detection for container module
+    monkeypatch.setattr(cont_mod.HostResources, "installed_gpu_drivers", list)
 
-    # Make threads synchronous for deterministic tests
-    monkeypatch.setattr(svc_mod.threading, "Thread", SyncThread)
+    # Make threads synchronous for deterministic tests (container module)
+    monkeypatch.setattr(cont_mod.threading, "Thread", SyncThread)
 
     # Provide a dummy provisioner singleton with a benign Cache
     import orchestration.provisioner as prov_mod
@@ -143,9 +146,9 @@ class TestBaseProvisionableServiceLifecycle:
         # Inject our pre-seeded cache instance for this service object by
         # replacing
         # the ActiveServicesCache initializer to return our instance.
-        import orchestration.service as svc_mod
+        import services.container as cont_mod
 
-        monkeypatch.setattr(svc_mod, "ActiveServicesCache", lambda c: cache)
+        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         with pytest.raises(RuntimeError) as ei:
             svc.start()
@@ -160,9 +163,9 @@ class TestBaseProvisionableServiceLifecycle:
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.STARTING)]
 
-        import orchestration.service as svc_mod
+        import services.container as cont_mod
 
-        monkeypatch.setattr(svc_mod, "ActiveServicesCache", lambda c: cache)
+        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         # Mock subprocess.run behavior for docker run and inspect
         class CP:
@@ -181,7 +184,8 @@ class TestBaseProvisionableServiceLifecycle:
                 return CP(0, stdout="true\n")
             raise AssertionError(f"Unexpected command: {cmd}")
 
-        monkeypatch.setattr(svc_mod.subprocess, "run", fake_run)
+        import services.container as cont_mod
+        monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act
         svc.start()
@@ -212,9 +216,8 @@ class TestBaseProvisionableServiceLifecycle:
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.AVAILABLE)]
 
-        import orchestration.service as svc_mod
-
-        monkeypatch.setattr(svc_mod, "ActiveServicesCache", lambda c: cache)
+        import services.container as cont_mod
+        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         with pytest.raises(RuntimeError) as ei:
             svc.stop()
@@ -231,9 +234,9 @@ class TestBaseProvisionableServiceLifecycle:
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [si]
 
-        import orchestration.service as svc_mod
+        import services.container as cont_mod
 
-        monkeypatch.setattr(svc_mod, "ActiveServicesCache", lambda c: cache)
+        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         class CP:
             def __init__(self, returncode=0, stdout="", stderr=""):
@@ -251,7 +254,8 @@ class TestBaseProvisionableServiceLifecycle:
                 return CP(0, stdout="")
             raise AssertionError(f"Unexpected command: {cmd}")
 
-        monkeypatch.setattr(svc_mod.subprocess, "run", fake_run)
+        import services.container as cont_mod
+        monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act
         svc.stop()
@@ -403,15 +407,13 @@ class TestEffectiveConfigResolution:
         monkeypatch.setenv("OZWALD_HOST", "localhost")
         return svc_def
 
-    class _Svc(BaseProvisionableService):
+    class _Svc(ContainerService):
         __test__ = False
 
         def __init__(self, si):
-            # Call BaseProvisionableService initializer to properly set up
-            # the Pydantic model
-            from orchestration.service import BaseProvisionableService as _B
-
-            _B.__init__(self, si)
+            # Call ContainerService initializer to properly set up
+            # the Pydantic model and base state
+            ContainerService.__init__(self, si)
 
         def get_container_start_command(self, image: str) -> list[str]:
             return ["docker", "run", image]
