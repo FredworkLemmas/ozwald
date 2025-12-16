@@ -383,9 +383,22 @@ def build_containers(name: Optional[str] = None) -> None:
         print(f"Image tag: {image_tag}")
         print(f"Dockerfile: {dockerfile}")
         print("=" * 70)
+
         result = _run(f"docker build -f {dockerfile} -t {image_tag} .")
         if result.returncode == 0:
             print(f"\n✓ Successfully built {image_tag}\n")
         else:
             print(f"\n✗ Failed to build {image_tag}\n")
+
+        # result = _run(f"docker tag {image_tag} localhost:5000/{image_tag}")
+        # if result.returncode == 0:
+        #     print(f"\n✓ Successfully tagged {image_tag}\n")
+        # else:
+        #     print(f"\n✗ Failed to tag {image_tag}\n")
+        #
+        # result = _run(f"docker push localhost:5000/{image_tag}")
+        # if result.returncode == 0:
+        #     print(f"\n✓ Successfully pushed {image_tag}\n")
+        # else:
+        #     print(f"\n✗ Failed to push {image_tag}\n")
     print("\nBuild complete!")

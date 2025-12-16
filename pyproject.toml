@@ -42,6 +42,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "uvicorn[standard]",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov",

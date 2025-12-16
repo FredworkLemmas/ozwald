@@ -1,0 +1,53 @@
+# Use latest Arch Linux
+FROM archlinux:latest
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+ENV OZWALD_CONFIG=/etc/ozwald.yml
+ENV OZWALD_PROVISIONER=unconfigured
+
+# Update system and install dependencies
+RUN pacman -Syu --noconfirm && \
+    pacman -S --noconfirm \
+    curl \
+    wget \
+    python \
+    python-pip \
+    python-virtualenv \
+    rocm-hip-sdk \
+    rocm-opencl-sdk \
+    amdsmi \
+    docker \
+    && pacman -Scc --noconfirm
+
+# Create a non-root user
+RUN useradd -m -u 1010 ozwald && \
+    mkdir -p /app && \
+    chown -R ozwald:ozwald /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy project metadata and source
+COPY pyproject.toml README.md /app/
+COPY src/ /app/src/
+
+# Create virtualenv and install Python dependencies
+RUN python -m virtualenv /venv && \
+    /venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /venv/bin/pip install --no-cache-dir .
+
+# Switch to non-root user
+USER ozwald
+
+# Expose the default port
+EXPOSE 8000
+
+# Health check
+#HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the provisioner backend using the virtualenv Python so installed deps are found
+CMD ["/venv/bin/python", "-m", "orchestration.provisioner"]

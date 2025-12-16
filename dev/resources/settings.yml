@@ -34,8 +34,8 @@ provisioners:
     cache:
       type: redis
       parameters:
-        host: jamma
-        port: 6379
+        host: daneel
+        port: 6479
         db: 0
 
 services:
