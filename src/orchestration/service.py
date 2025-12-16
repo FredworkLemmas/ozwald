@@ -4,7 +4,7 @@ import os
 import pkgutil
 import sys
 import threading
-from typing import Any, ClassVar, Optional, Type
+from typing import ClassVar, Optional, Type
 
 from config.reader import SystemConfigReader
 from orchestration.models import (
@@ -12,7 +12,6 @@ from orchestration.models import (
     Service,
     ServiceDefinition,
     ServiceInformation,
-    ServiceStatus,
 )
 from util.logger import get_logger
 
@@ -79,9 +78,7 @@ class BaseProvisionableService(Service):
             )
         return service_def
 
-
     # (no container-specific helpers are implemented in the base class)
-
 
     @classmethod
     def _lookup_service(

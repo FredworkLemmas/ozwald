@@ -131,7 +131,8 @@ def config_from_env() -> Path:
 def env_for_daemon(config_from_env: Path) -> dict:
     # Ensure provisioner is set; default to 'jamma' if not provided
     os.environ.setdefault(
-        "OZWALD_PROVISIONER", os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma")
+        "OZWALD_PROVISIONER",
+        os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
     )
     return os.environ.copy()
 

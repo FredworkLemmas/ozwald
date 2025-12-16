@@ -93,7 +93,9 @@ def patch_system(monkeypatch):
     import services.container as cont_mod
 
     # Patch in container module; Base no longer uses ActiveServicesCache
-    monkeypatch.setattr(cont_mod, "ActiveServicesCache", FakeActiveServicesCache)
+    monkeypatch.setattr(
+        cont_mod, "ActiveServicesCache", FakeActiveServicesCache
+    )
 
     # Short-circuit GPU detection for container module
     monkeypatch.setattr(cont_mod.HostResources, "installed_gpu_drivers", list)
@@ -185,6 +187,7 @@ class TestBaseProvisionableServiceLifecycle:
             raise AssertionError(f"Unexpected command: {cmd}")
 
         import services.container as cont_mod
+
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act
@@ -217,6 +220,7 @@ class TestBaseProvisionableServiceLifecycle:
         cache._services = [_si("svc1", ServiceStatus.AVAILABLE)]
 
         import services.container as cont_mod
+
         monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         with pytest.raises(RuntimeError) as ei:
@@ -255,6 +259,7 @@ class TestBaseProvisionableServiceLifecycle:
             raise AssertionError(f"Unexpected command: {cmd}")
 
         import services.container as cont_mod
+
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act

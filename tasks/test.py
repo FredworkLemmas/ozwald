@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import yaml
-from dotenv import load_dotenv
 from invocate import task
 
 from tasks import start_provisioner, stop_provisioner
@@ -190,9 +189,7 @@ def integration(
         repo_root = Path(__file__).resolve().parents[1]
         settings_path = repo_root / "dev" / "resources" / "settings.yml"
         if not settings_path.exists():
-            raise RuntimeError(
-                f"Dev settings file not found: {settings_path}"
-            )
+            raise RuntimeError(f"Dev settings file not found: {settings_path}")
         root_dir = settings_path.parent
     else:
         root_dir, settings_path = _ensure_temp_assets(
