@@ -273,17 +273,6 @@ def coverage(
         c.run("coverage xml")
 
 
-# ----------------------
-# Developer quality tasks
-# ----------------------
-
-
-@task(namespace="test", name="coverage")
-def dev_coverage(c):
-    """Run pytest with coverage and show missing lines."""
-    c.run("pytest --cov=src --cov-report=term-missing", pty=True)
-
-
 @task(namespace="test", name="tox")
 def dev_tox(c):
     """Run tox default environments locally."""
