@@ -1,12 +1,13 @@
 import os
+import tempfile
+from pathlib import Path
+from typing import Optional, Tuple
 
+import yaml
 from dotenv import load_dotenv
 from invocate import task
-from invoke import call
 
 from tasks import start_provisioner, stop_provisioner
-
-load_dotenv()
 
 DEFAULT_OZWALD_PROVISIONER = os.environ.get(
     "DEFAULT_OZWALD_PROVISIONER", "unconfigured"
@@ -19,12 +20,102 @@ def unit(c, path="tests/unit/"):
     c.run(f"pytest {path}")
 
 
-@task(
-    namespace="test",
-    name="integration",
-    pre=[stop_provisioner, call(start_provisioner, mount_source_dir=True)],
-)
-def integration(c, path="tests/integration/"):
+def _ensure_temp_assets(
+    *,
+    temp_root: Optional[str] = None,
+    reuse: bool = False,
+    provisioner_name: str = "jamma",
+) -> Tuple[Path, Path]:
+    """Create (or reuse) a temp settings.yml and volume directory.
+
+    Returns (root_dir, settings_path).
+    """
+    if temp_root:
+        root = Path(temp_root).expanduser().resolve()
+        root.mkdir(parents=True, exist_ok=True)
+    else:
+        root = Path(tempfile.mkdtemp(prefix="ozwald-it-"))
+
+    settings_path = root / "settings.yml"
+    solar_root = root / "solar_system"
+
+    if not reuse or not (settings_path.exists() and solar_root.exists()):
+        # Build sample volume tree
+        (solar_root / "jupiter").mkdir(parents=True, exist_ok=True)
+        (solar_root / "saturn").mkdir(parents=True, exist_ok=True)
+        (solar_root / "jupiter" / "europa.txt").write_text(
+            "icy world\n", encoding="utf-8"
+        )
+        (solar_root / "saturn" / "titan.txt").write_text(
+            "hazy moon\n", encoding="utf-8"
+        )
+
+        # Compose minimal settings
+        cfg = {
+            "provisioners": [
+                {
+                    "name": provisioner_name,
+                    "host": provisioner_name,
+                    "cache": {
+                        "type": "redis",
+                        "parameters": {
+                            # The backend container reaches Redis by name
+                            "host": "ozwald-provisioner-redis",
+                            "port": 6379,
+                            "db": 0,
+                        },
+                    },
+                }
+            ],
+            "services": [
+                {
+                    "name": "test_env_and_vols",
+                    "type": "container",
+                    "description": "Test environment and volumes",
+                    "image": "test_env_and_vols",
+                    "environment": {
+                        "TEST_ENV_VAR": "test_env_var_value",
+                        "ANOTHER_TEST_ENV_VAR": "another_test_env_var_value",
+                        "FILE_LISTING_PATHS": "/solar_system",
+                    },
+                    "volumes": [
+                        {
+                            "name": "solar_system",
+                            "target": "/solar_system",
+                            "read_only": True,
+                        }
+                    ],
+                },
+                {
+                    "name": "simple_test_1",
+                    "type": "container",
+                    "description": "Simple test service",
+                    "image": "simple_test_1",
+                },
+            ],
+            "volumes": {
+                "solar_system": {
+                    "type": "bind",
+                    "source": str(solar_root.resolve()),
+                }
+            },
+        }
+        settings_path.write_text(
+            yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8"
+        )
+
+    return root, settings_path
+
+
+@task(namespace="test", name="integration")
+def integration(
+    c,
+    path="tests/integration/",
+    keep_temp: bool = False,
+    reuse_temp: bool = False,
+    temp_root: str = "",
+    use_dev_settings: bool = False,
+):
     """Run integration tests against running provisioner services.
 
     This checks that the API server, backend service, and Redis service are
@@ -94,8 +185,29 @@ def integration(c, path="tests/integration/"):
         print("Once the services are running, rerun: invocate test.integration")
         return
 
-    # the integration tests need OZWALD_PROVISIONER set
+    # Prepare settings: generate temp config unless opting into dev file
+    if use_dev_settings:
+        repo_root = Path(__file__).resolve().parents[1]
+        settings_path = repo_root / "dev" / "resources" / "settings.yml"
+        if not settings_path.exists():
+            raise RuntimeError(
+                f"Dev settings file not found: {settings_path}"
+            )
+        root_dir = settings_path.parent
+    else:
+        root_dir, settings_path = _ensure_temp_assets(
+            temp_root=(temp_root or None),
+            reuse=reuse_temp,
+            provisioner_name=DEFAULT_OZWALD_PROVISIONER,
+        )
+
+    # Export env so both backend container and pytest see the same config
+    os.environ["OZWALD_CONFIG"] = str(settings_path)
     os.environ["OZWALD_PROVISIONER"] = DEFAULT_OZWALD_PROVISIONER
+
+    # Stop/start provisioner stack with new config mounted
+    stop_provisioner(c)
+    start_provisioner(c, mount_source_dir=True)
 
     # Run the integration test suite
     # Expose env that tests may rely on
@@ -109,7 +221,6 @@ def integration(c, path="tests/integration/"):
             if k
             in (
                 "OZWALD_PROVISIONER_REDIS_PORT",
-                "DEFAULT_OZWALD_CONFIG",
                 "OZWALD_CONFIG",
                 "OZWALD_PROVISIONER",
             )
@@ -118,7 +229,17 @@ def integration(c, path="tests/integration/"):
 
     # Build env export string
     export_cmd = " ".join([f"{k}='{v}'" for k, v in env.items()])
-    c.run(f'bash -lc "{export_cmd} pytest {path}"')
+    try:
+        c.run(f'bash -lc "{export_cmd} pytest {path}"')
+    finally:
+        if not keep_temp and not use_dev_settings:
+            try:
+                # Best-effort cleanup of temp root
+                import shutil
+
+                shutil.rmtree(root_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 @task(namespace="test", name="coverage")

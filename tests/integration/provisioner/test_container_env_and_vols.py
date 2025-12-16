@@ -119,24 +119,21 @@ def docker_prereq():
 
 
 @pytest.fixture(scope="module")
-def dev_settings_path() -> Path:
-    repo_root = Path(__file__).resolve().parents[3]
-    path = repo_root / "dev" / "resources" / "settings.yml"
-    assert path.exists(), f"Dev settings file not found at {path}"
-    return path
+def config_from_env() -> Path:
+    cfg_path = os.environ.get("OZWALD_CONFIG")
+    assert cfg_path, "OZWALD_CONFIG must be set for integration tests"
+    p = Path(cfg_path)
+    assert p.exists(), f"Settings file not found: {p}"
+    return p
 
 
 @pytest.fixture(scope="module")
-def env_for_daemon(dev_settings_path: Path) -> dict:
-    mp = pytest.MonkeyPatch()
-    mp.setenv("OZWALD_CONFIG", str(dev_settings_path))
-    default_prov = os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma")
-    mp.setenv("OZWALD_PROVISIONER", default_prov)
-    env = os.environ.copy()
-    try:
-        yield env
-    finally:
-        mp.undo()
+def env_for_daemon(config_from_env: Path) -> dict:
+    # Ensure provisioner is set; default to 'jamma' if not provided
+    os.environ.setdefault(
+        "OZWALD_PROVISIONER", os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma")
+    )
+    return os.environ.copy()
 
 
 @pytest.fixture(autouse=True)
@@ -185,7 +182,7 @@ def _update_services(service_updates: List[dict]):
 def test_container_env_and_volumes(docker_prereq, env_for_daemon):
     """
     Verify that the test_env_and_vols container runs with the
-    configured environment and that the dev/resources/solar_system
+    configured environment and that the generated solar_system
     directory is mounted at /solar_system inside the container.
     """
     svc_name = "test_env_and_vols"
