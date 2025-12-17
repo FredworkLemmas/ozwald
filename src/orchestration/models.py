@@ -85,6 +85,9 @@ class ServiceDefinitionProfile(BaseModel):
     entrypoint: Optional[List[str] | str] = None
     env_file: List[str] = Field(default_factory=list)
     environment: Dict[str, Any] = Field(default_factory=dict)
+    # Normalized docker volume strings, e.g. "/host:/ctr:ro" or
+    # "named_vol:/ctr:rw"
+    volumes: List[str] = Field(default_factory=list)
 
 
 class ServiceDefinitionVariety(BaseModel):
@@ -94,6 +97,8 @@ class ServiceDefinitionVariety(BaseModel):
     entrypoint: Optional[List[str] | str] = None
     env_file: Optional[List[str]] = Field(default_factory=list)
     environment: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    # Normalized docker volume strings, same format as on the base service
+    volumes: List[str] = Field(default_factory=list)
 
 
 class ServiceDefinition(BaseModel):

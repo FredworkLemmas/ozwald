@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 from typing import Any, ClassVar
 
-from config.reader import SystemConfigReader
 from hosts.resources import HostResources
 from orchestration.models import ServiceInformation, ServiceStatus
 from orchestration.service import BaseProvisionableService
@@ -295,6 +294,7 @@ class ContainerService(BaseProvisionableService):
         base_entrypoint = service_def.entrypoint
         base_env_file = service_def.env_file
         base_image = service_def.image
+        base_vols = list(service_def.volumes or [])
 
         v = None
         if variety_name:
@@ -309,6 +309,7 @@ class ContainerService(BaseProvisionableService):
         v_entrypoint = v.entrypoint if v else None
         v_env_file = (v.env_file if v else None) or None
         v_image = (v.image if v else None) or None
+        v_vols = list(getattr(v, "volumes", []) or [])
 
         p = None
         if profile_name:
@@ -323,8 +324,46 @@ class ContainerService(BaseProvisionableService):
         p_entrypoint = p.entrypoint if p else None
         p_env_file = (p.env_file if p else None) or None
         p_image = (p.image if p else None) or None
+        p_vols = list(getattr(p, "volumes", []) or [])
 
         merged_env = {**base_env, **v_env, **p_env}
+
+        def _target_of(vol_spec: str) -> str:
+            try:
+                # vol_spec format examples:
+                #   /host:/ctr:ro
+                #   name:/ctr:rw
+                #   /host:/ctr (no mode)
+                _host, rest = vol_spec.split(":", 1)
+                target = rest.split(":", 1)[0]
+                return target
+            except Exception:
+                return ""
+
+        def _merge_volumes(
+            base_list: list[str], var_list: list[str], prof_list: list[str]
+        ) -> list[str]:
+            order: list[str] = []  # target order
+            by_target: dict[str, str] = {}
+
+            def add_many(lst: list[str]):
+                for spec in lst:
+                    t = _target_of(spec)
+                    if not t:
+                        continue
+                    if t in by_target:
+                        # replace, keep position
+                        by_target[t] = spec
+                    else:
+                        by_target[t] = spec
+                        order.append(t)
+
+            add_many(base_list)
+            add_many(v_vols)
+            add_many(prof_list)
+            return [by_target[t] for t in order]
+
+        merged_vols = _merge_volumes(base_vols, v_vols, p_vols)
 
         def choose(*vals):
             for val in vals:
@@ -346,6 +385,7 @@ class ContainerService(BaseProvisionableService):
             "entrypoint": choose(p_entrypoint, v_entrypoint, base_entrypoint),
             "env_file": choose(p_env_file, v_env_file, base_env_file) or [],
             "image": choose(p_image, v_image, base_image) or "",
+            "volumes": merged_vols,
         }
         return effective
 
@@ -500,12 +540,14 @@ class ContainerService(BaseProvisionableService):
     def get_container_volumes(self) -> list[str] | None:
         if self.container_volumes is not None:
             return self.container_volumes
-        # Fallback to config-defined volumes (already normalized by reader)
+        # Resolve volumes with profile/variety-aware merge
         try:
-            service_def = SystemConfigReader.singleton().get_service_by_name(
-                self.get_service_information().service
+            si = self.get_service_information()
+            sd = self.get_service_definition()
+            resolved = self._resolve_effective_fields(
+                sd, si.profile, si.variety
             )
-            return (service_def.volumes or []) if service_def else []
+            return resolved.get("volumes") or []
         except Exception:
             return None
 

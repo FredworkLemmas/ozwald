@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from config.reader import ConfigReader
 from orchestration.models import (
@@ -56,17 +57,17 @@ class TestConfigReaderInitialization:
         Verify that ConfigReader raises ValueError when initialized
         with an empty YAML file.
         """
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(
+            ValueError, match=r"Empty or invalid YAML configuration"
+        ):
             ConfigReader(str(empty_config_file))
-
-        assert "Empty or invalid YAML configuration" in str(exc_info.value)
 
     def test_init_with_invalid_yaml(self, invalid_yaml_file):
         """
         Verify that ConfigReader raises an exception when initialized
         with a file containing invalid YAML syntax.
         """
-        with pytest.raises(Exception):  # yaml.YAMLError or similar
+        with pytest.raises(yaml.YAMLError):
             ConfigReader(str(invalid_yaml_file))
 
     # orchestrator section no longer exists in simplified schema
@@ -472,3 +473,73 @@ class TestIntegration:
 
         assert reader_from_str.config_path == reader_from_path.config_path
         assert len(reader_from_str.hosts) == len(reader_from_path.hosts)
+
+
+# ============================================================================
+# Volumes in profiles and varieties
+# ============================================================================
+
+
+class TestVolumesInProfilesVarieties:
+    def test_volumes_parsed_and_normalized(self, tmp_path):
+        cfg_dir = tmp_path / "cfg"
+        cfg_dir.mkdir()
+        host1 = cfg_dir / "host1"
+        host1.mkdir()
+        cfg = {
+            "hosts": [],
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "volumes": [
+                        {
+                            "name": "v1",
+                            "target": "/t1",
+                            "read_only": True,
+                        }
+                    ],
+                    "varieties": {
+                        "A": {"volumes": [{"name": "v2", "target": "/t2"}]}
+                    },
+                    "profiles": {
+                        "P": {
+                            "volumes": [
+                                {
+                                    "name": "v1",
+                                    "target": "/t1",
+                                    "read_only": False,
+                                }
+                            ]
+                        }
+                    },
+                }
+            ],
+            "provisioners": [],
+            "volumes": {
+                "v1": {
+                    "type": "bind",
+                    "source": "${SETTINGS_FILE_DIR}/host1",
+                },
+                "v2": {"type": "named"},
+            },
+        }
+
+        cfg_path = cfg_dir / "settings.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+
+        reader = ConfigReader(str(cfg_path))
+        svc = reader.get_service_by_name("svc")
+        assert svc is not None
+        # base volume normalized to absolute bind host
+        assert any(v.endswith(":/t1:ro") for v in svc.volumes)
+        # variety volume normalized for named
+        varA = svc.varieties.get("A")
+        assert varA is not None
+        assert varA.volumes == ["v2:/t2:rw"]
+        # profile volume normalized override
+        profP = svc.profiles.get("P")
+        assert profP is not None
+        assert any(v.endswith(":/t1:rw") for v in profP.volumes)

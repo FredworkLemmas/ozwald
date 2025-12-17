@@ -221,6 +221,11 @@ class ConfigReader:
                 env_file = list(parent_env_file)
                 if profile_data.get("env_file"):
                     env_file = profile_data.get("env_file")
+                # Normalize profile-specific volumes (no implicit inherit);
+                # merging happens at runtime by target precedence.
+                prof_vols = self._normalize_service_volumes(
+                    profile_data.get("volumes", [])
+                )
 
                 profile = ServiceDefinitionProfile(
                     name=name,
@@ -233,6 +238,7 @@ class ConfigReader:
                     ),
                     env_file=env_file,
                     environment=env,
+                    volumes=prof_vols,
                 )
                 profiles.append(profile)
 
@@ -242,6 +248,9 @@ class ConfigReader:
             # Determine a default image if not specified at parent-level
             default_image_from_variety = None
             for variety_name, variety_data in varieties_data.items():
+                v_vols = self._normalize_service_volumes(
+                    variety_data.get("volumes", [])
+                )
                 v = ServiceDefinitionVariety(
                     image=variety_data.get("image", parent_image)
                     or parent_image
@@ -255,6 +264,7 @@ class ConfigReader:
                     env_file=variety_data.get("env_file", [])
                     or parent_env_file,
                     environment=variety_data.get("environment", {}),
+                    volumes=v_vols,
                 )
                 varieties[variety_name] = v
                 if default_image_from_variety is None and v.image:
