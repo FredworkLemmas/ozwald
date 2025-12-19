@@ -303,6 +303,7 @@ def clear_cache_between_tests(env_setup):
 
 class TestVarietiesProfilesVolumes:
     def test_variety_union(self, docker_prereq, env_setup):
+        """It should include volumes from both base and variety."""
         name = f"it-vp-A-{int(time.time()) % 100000}"
         svc = "test_env_and_vols"
         body = [
@@ -325,6 +326,7 @@ class TestVarietiesProfilesVolumes:
         assert "/extras" in dirs
 
     def test_variety_overrides_base_rw(self, docker_prereq, env_setup):
+        """Variety volume definition (rw) should override base (ro)."""
         name = f"it-vp-B-{int(time.time()) % 100000}"
         svc = "test_env_and_vols"
         body = [
@@ -345,6 +347,7 @@ class TestVarietiesProfilesVolumes:
     def test_profile_overrides_variety_and_unions(
         self, docker_prereq, env_setup
     ):
+        """It should overwrite base and variety volumes with profile volumes."""
         name = f"it-vp-BP-{int(time.time()) % 100000}"
         svc = "test_env_and_vols"
         body = [
