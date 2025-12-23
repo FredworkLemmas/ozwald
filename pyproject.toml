@@ -58,6 +58,7 @@ dev = [
     "bandit[toml]",
     "codespell",
     "tox",
+    "uv",
     "httpx"
 ]
 docs = [
@@ -151,3 +152,9 @@ disallow_untyped_defs = false
 [tool.bandit]
 targets = ["src"]
 exclude = ["tests/**", "dev/documentation/site"]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/ozwald"
+publish-url = "https://test.pypi.org/legacy/" # The endpoint for uploading packages
+default = false
