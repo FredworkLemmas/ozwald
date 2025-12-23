@@ -180,7 +180,48 @@ def _update_services(service_updates: List[dict]):
 # --- The test ---
 
 
-def test_container_env_and_volumes(docker_prereq, env_for_daemon):
+@pytest.fixture
+def started_instances():
+    """Collect instance names started by a test for teardown."""
+    items = []
+    return items
+
+
+@pytest.fixture(autouse=True)
+def stop_started_services_after_test(started_instances):
+    """After each test, request stop and ensure containers are gone.
+
+    Uses the provisioner control plane first, then falls back to a
+    forced Docker remove if needed, to keep the environment clean.
+    """
+    # Run the test
+    yield
+
+    # Ask provisioner to stop everything
+    _update_services([])
+
+    # Wait for known containers to disappear, then force-remove if not
+    for inst in started_instances:
+        cname = f"service-{inst}"
+        try:
+            _wait_for(
+                lambda cname=cname: not _container_running(cname),
+                timeout=60.0,
+                interval=0.5,
+                description=f"container {cname} to stop",
+            )
+        except AssertionError:
+            # Last resort to avoid lingering containers
+            subprocess.run(
+                ["docker", "rm", "-f", cname],
+                capture_output=True,
+                text=True,
+            )
+
+
+def test_container_env_and_volumes(
+    docker_prereq, env_for_daemon, started_instances
+):
     """
     Verify that the test_env_and_vols container runs with the
     configured environment and that the generated solar_system
@@ -197,6 +238,9 @@ def test_container_env_and_volumes(docker_prereq, env_for_daemon):
         }
     ]
     _update_services(body)
+
+    # Register instance for teardown
+    started_instances.append(instance_name)
 
     # Wait for container to appear
     container = f"service-{instance_name}"

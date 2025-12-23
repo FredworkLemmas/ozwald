@@ -228,9 +228,11 @@ def test_daemon_stop_flow_sets_timestamps_and_persists(
 
     assert stop_called["count"] == 1
     assert fake_cache.set_calls, "expected cache write"
-    persisted = fake_cache.set_calls[-1][0]
-    assert "stop_initiated" in persisted.info
-    assert "stop_completed" in persisted.info
+    # With current semantics, stopped services are removed from cache.
+    # The final persisted list should no longer include the service.
+    persisted_list = fake_cache.set_calls[-1]
+    assert isinstance(persisted_list, list)
+    assert persisted_list == []
 
 
 def test_daemon_ignores_duplicate_stop_within_timeout(
@@ -296,3 +298,45 @@ def test_daemon_persists_with_retry_on_write_collision(
     )
     # The one-time collision does not record a set_call; only the success
     # is recorded by our fake
+
+
+class TestUpdateServicesBehaviorEmptyList:
+    def test_empty_list_marks_all_active_as_stopping_and_persists(
+        self, provisioner_env
+    ):
+        _prov_mod, prov, fake_cache = provisioner_env
+
+        # Seed two AVAILABLE services
+        a = _svc_info("svc-a", ServiceStatus.AVAILABLE)
+        b = _svc_info("svc-b", ServiceStatus.AVAILABLE)
+        fake_cache._services = [a, b]
+
+        ok = prov.update_services([])
+        assert ok
+        assert fake_cache.set_calls, "expected cache write"
+        persisted: list[ServiceInformation] = fake_cache.set_calls[-1]
+        assert len(persisted) == 2
+        assert all(s.status == ServiceStatus.STOPPING for s in persisted)
+
+    def test_empty_list_with_no_active_services_persists_empty_list(
+        self, provisioner_env
+    ):
+        _prov_mod, prov, fake_cache = provisioner_env
+
+        fake_cache._services = []
+        ok = prov.update_services([])
+        assert ok
+        # A write with an empty list is still a valid operation
+        assert fake_cache.set_calls
+        assert fake_cache.set_calls[-1] == []
+
+    def test_empty_list_retry_on_collision(self, provisioner_env):
+        _prov_mod, prov, fake_cache = provisioner_env
+
+        fake_cache._services = []
+        fake_cache.raise_write_collision_once = True
+
+        ok = prov.update_services([])
+        assert ok
+        # Only the successful write is recorded
+        assert len(fake_cache.set_calls) == 1

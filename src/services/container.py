@@ -114,6 +114,36 @@ class ContainerService(BaseProvisionableService):
                     )
                     return
 
+                # Remove any stale container with the same name to avoid
+                # name conflicts on repeated start attempts
+                try:
+                    name = self.get_container_name()
+                    inspect = [
+                        "docker",
+                        "ps",
+                        "-a",
+                        "--filter",
+                        f"name=^{name}$",
+                        "--format",
+                        "{{.Names}}",
+                    ]
+                    check = subprocess.run(
+                        inspect, capture_output=True, text=True
+                    )
+                    exists = any(
+                        line.strip() == name
+                        for line in (check.stdout or "").splitlines()
+                    )
+                    if exists:
+                        subprocess.run(
+                            ["docker", "rm", "-f", name],
+                            capture_output=True,
+                            text=True,
+                        )
+                except Exception:
+                    # Best effort cleanup; continue regardless
+                    pass
+
                 # compute the container start command
                 cmd = self.get_container_start_command(image)
 

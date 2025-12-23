@@ -1,10 +1,13 @@
 import argparse
+import json
 import os
+import re
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
+from config.reader import SystemConfigReader
 from hosts.resources import HostResources
 
 # Internal library modules we created for reuse
@@ -240,6 +243,141 @@ def action_status() -> int:
     return 0 if all_ok else 1
 
 
+def _bracket_tokens(s: str) -> List[str]:
+    return [m.group(1) for m in re.finditer(r"\[([^\]]*)\]", s)]
+
+
+def _parse_services_spec_entry(
+    entry: str,
+    cfg: SystemConfigReader,
+) -> Dict[str, Any]:
+    if "[" not in entry or "]" not in entry:
+        raise ValueError(
+            "Invalid service spec entry; expected NAME[service]..."
+        )
+    name_part = entry.split("[", 1)[0].strip()
+    if not name_part:
+        raise ValueError("Service instance name is required before '['")
+
+    tokens = [t.strip() for t in _bracket_tokens(entry)]
+    if not tokens:
+        raise ValueError("Missing required service token inside brackets")
+
+    service_name = tokens[0]
+    if not service_name:
+        raise ValueError("Service name cannot be empty")
+
+    # Look up service definition to validate/disambiguate
+    svc_def = cfg.get_service_by_name(service_name)
+    varieties = set((svc_def.varieties or {}).keys()) if svc_def else set()
+    profiles = set((svc_def.profiles or {}).keys()) if svc_def else set()
+
+    variety: Optional[str] = None
+    profile: Optional[str] = None
+
+    if len(tokens) >= 2:
+        tok2 = tokens[1]
+        if tok2 == "":
+            # explicit empty means None for variety
+            variety = None
+        else:
+            # Disambiguate second token using config knowledge
+            if profiles and not varieties:
+                # Treat as profile when only profiles exist
+                if tok2 not in profiles:
+                    raise ValueError(
+                        f"Unknown profile '{tok2}' for service '{service_name}'"
+                    )
+                profile = tok2
+            elif varieties and not profiles:
+                if tok2 not in varieties:
+                    raise ValueError(
+                        f"Unknown variety '{tok2}' for service '{service_name}'"
+                    )
+                variety = tok2
+            elif varieties or profiles:
+                in_var = tok2 in varieties
+                in_prof = tok2 in profiles
+                if in_var and not in_prof:
+                    variety = tok2
+                elif in_prof and not in_var:
+                    profile = tok2
+                else:
+                    # ambiguous or unknown
+                    known_v = ", ".join(sorted(varieties)) or "<none>"
+                    known_p = ", ".join(sorted(profiles)) or "<none>"
+                    raise ValueError(
+                        "Ambiguous or unknown token '"
+                        + tok2
+                        + f"' for service '{service_name}'. "
+                        + "Known varieties: "
+                        + known_v
+                        + "; known profiles: "
+                        + known_p
+                        + ". Use [] to skip variety when specifying "
+                        + "a profile, or provide all three tokens."
+                    )
+            else:
+                # No knowledge available; fail fast per requirement
+                raise ValueError(
+                    f"No varieties/profiles defined for '{service_name}', "
+                    f"but received extra token '{tok2}'."
+                )
+
+    if len(tokens) >= 3:
+        tok3 = tokens[2]
+        if tok3 == "":
+            profile = None
+        else:
+            if profiles and tok3 not in profiles:
+                raise ValueError(
+                    f"Unknown profile '{tok3}' for service '{service_name}'"
+                )
+            profile = tok3
+
+    return {
+        "name": name_part,
+        "service": service_name,
+        "variety": variety,
+        "profile": profile,
+    }
+
+
+def _parse_services_spec(spec: str) -> List[Dict[str, Any]]:
+    cfg = SystemConfigReader.singleton()
+    result: List[Dict[str, Any]] = []
+    for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
+        result.append(_parse_services_spec_entry(raw, cfg))
+    if not result:
+        raise ValueError("No services parsed from specification string")
+    return result
+
+
+def action_update_services(port: int, clear: bool, spec: Optional[str]) -> int:
+    try:
+        if clear:
+            body: List[Dict[str, Any]] = []
+        else:
+            if not spec:
+                print(
+                    "Error: services specification is required when "
+                    "not using --clear"
+                )
+                return 2
+            body = _parse_services_spec(spec)
+
+        data = ucli.update_services(port=port, body=body)
+        status = data.get("status")
+        if status == "accepted":
+            print("\n✓ Service update request accepted\n")
+            return 0
+        print(f"Unexpected response: {json.dumps(data)}")
+        return 2
+    except Exception as e:
+        print(f"Error updating services: {e}")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ozwald",
@@ -254,6 +392,7 @@ def build_parser() -> argparse.ArgumentParser:
             "list_configured_services",
             "list_active_services",
             "show_host_resources",
+            "update_services",
             "status",
         ],
     )
@@ -294,6 +433,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="For show_host_resources, fetch via provisioner API",
     )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help=(
+            "For update_services: send an empty list to clear active services"
+        ),
+    )
+    parser.add_argument(
+        "services_spec",
+        nargs="?",
+        help=(
+            "For update_services: comma-separated entries like "
+            "NAME[service][variety][profile]"
+        ),
+    )
     return parser
 
 
@@ -316,6 +470,10 @@ def main(argv: List[str] | None = None) -> int:
         return action_list_active_services(port_for_api)
     if args.action == "show_host_resources":
         return action_show_host_resources(args.use_api, port_for_api)
+    if args.action == "update_services":
+        return action_update_services(
+            port_for_api, args.clear, args.services_spec
+        )
     if args.action == "status":
         return action_status()
 
