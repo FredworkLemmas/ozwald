@@ -109,6 +109,26 @@ def _exec_in_container(name: str, cmd: str) -> int:
     return res.returncode
 
 
+def _list_containers(prefix: str) -> list[str]:
+    """List docker containers whose names start with the given prefix."""
+    res = subprocess.run(
+        ["docker", "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+    )
+    names = [n.strip() for n in res.stdout.splitlines()]
+    return [n for n in names if n.startswith(prefix)]
+
+
+def _stop_container(name: str) -> None:
+    """Force stop and remove a docker container by name."""
+    subprocess.run(
+        ["docker", "rm", "-f", name],
+        capture_output=True,
+        text=True,
+    )
+
+
 def _redis_connection_parameters() -> dict:
     port_env = (
         os.environ.get("DEFAULT_PROVISIONER_REDIS_PORT")
@@ -299,6 +319,29 @@ def clear_cache_between_tests(env_setup):
         yield
     finally:
         _flush_redis(params["host"], params["port"], db=params["db"])
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_service_containers():
+    """Ensure containers started by these tests are removed after each.
+
+    Only targets containers named with the module's prefix to avoid
+    interfering with other integration tests.
+    """
+    try:
+        yield
+    finally:
+        prefix = "service-it-vp-"
+        try:
+            leftover = _list_containers(prefix)
+        except Exception:
+            leftover = []
+        for cname in leftover:
+            _stop_container(cname)
+            _wait_for(
+                lambda cname=cname: not _container_running(cname),
+                timeout=20.0,
+            )
 
 
 class TestVarietiesProfilesVolumes:

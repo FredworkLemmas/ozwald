@@ -48,3 +48,26 @@ def get(
     if session is None:
         return requests.get(url, headers=headers, timeout=to, **kwargs)
     return session.get(url, headers=headers, timeout=to, **kwargs)
+
+
+def post(
+    url: str,
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: Optional[Union[float, Tuple[float, float]]] = None,
+    session: Optional[requests.Session] = None,
+    **kwargs: Any,
+) -> requests.Response:
+    """HTTP POST wrapper enforcing a timeout by default.
+
+    Args:
+        url: URL to post to
+        headers: Optional headers to include
+        timeout: Optional timeout override (seconds or (connect, read)).
+        session: Optional requests.Session to use
+        **kwargs: Passed through to requests.post
+    """
+    to = timeout if timeout is not None else DEFAULT_HTTP_TIMEOUT
+    if session is None:
+        return requests.post(url, headers=headers, timeout=to, **kwargs)
+    return session.post(url, headers=headers, timeout=to, **kwargs)

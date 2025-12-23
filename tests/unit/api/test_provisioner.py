@@ -221,6 +221,107 @@ class TestUpdateServices:
         ]
 
 
+class TestUpdateServicesEmptyList:
+    def test_empty_list_delegates_and_returns_202(
+        self, client: TestClient, auth_header: dict[str, str], mocker
+    ) -> None:
+        """
+        Posting an empty list should be accepted (202) and delegated to
+        the provisioner with an empty list of ServiceInformation.
+        """
+
+        prov = mocker.Mock()
+        prov.update_services.return_value = True
+        mocker.patch(
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
+        )
+
+        resp = client.post(
+            "/srv/services/active/update/", json=[], headers=auth_header
+        )
+        assert resp.status_code == 202
+        assert resp.json()["status"] == "accepted"
+
+        prov.update_services.assert_called_once()
+        (arg_list,), _ = prov.update_services.call_args
+        assert isinstance(arg_list, list)
+        assert arg_list == []
+
+    def test_empty_list_persist_failure_yields_503(
+        self, client: TestClient, auth_header: dict[str, str], mocker
+    ) -> None:
+        """
+        If the provisioner returns False (persistence failure), the API
+        should return 503.
+        """
+
+        prov = mocker.Mock()
+        prov.update_services.return_value = False
+        mocker.patch(
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
+        )
+
+        resp = client.post(
+            "/srv/services/active/update/", json=[], headers=auth_header
+        )
+        assert resp.status_code == 503
+        assert "persist" in resp.json().get("detail", "").lower()
+
+    def test_empty_list_legacy_endpoint_alias(
+        self, client: TestClient, auth_header: dict[str, str], mocker
+    ) -> None:
+        """
+        The legacy endpoint should behave the same as the primary one
+        when passed an empty list.
+        """
+
+        prov = mocker.Mock()
+        prov.update_services.return_value = True
+        mocker.patch(
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
+        )
+
+        resp = client.post(
+            "/srv/services/update/", json=[], headers=auth_header
+        )
+        assert resp.status_code == 202
+        assert resp.json()["status"] == "accepted"
+        prov.update_services.assert_called_once()
+
+    def test_update_services_value_error_yields_400(
+        self, client: TestClient, auth_header: dict[str, str], mocker
+    ) -> None:
+        """
+        A ValueError raised by the provisioner should be translated to a
+        400 response by the API.
+        """
+
+        prov = mocker.Mock()
+        prov.update_services.side_effect = ValueError("not found")
+        mocker.patch(
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
+        )
+
+        payload = [
+            {
+                "name": "inst-x",
+                "service": "unknown",
+                "profile": "default",
+            }
+        ]
+        resp = client.post(
+            "/srv/services/active/update/",
+            json=payload,
+            headers=auth_header,
+        )
+        assert resp.status_code == 400
+        assert "not found" in resp.json().get("detail", "").lower()
+
+
 class TestAvailableResources:
     def test_get_available_resources_returns_list(
         self, client: TestClient, auth_header: dict[str, str], mocker

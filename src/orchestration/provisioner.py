@@ -364,6 +364,20 @@ class SystemProvisioner:
 
                 # Persist updates if any
                 if updated:
+                    # Remove services that have completed stopping to avoid
+                    # lingering STOPPING entries and races with service-level
+                    # cache updates. A STOPPING service with a stop_completed
+                    # marker should be removed from the active list.
+                    active_services = [
+                        s
+                        for s in active_services
+                        if not (
+                            s.status == ServiceStatus.STOPPING
+                            and getattr(s, "info", None)
+                            and s.info.get("stop_completed")
+                        )
+                    ]
+
                     deadline = time.time() + 5.0
                     while True:
                         try:
