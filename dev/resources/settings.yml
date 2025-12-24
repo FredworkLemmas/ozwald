@@ -144,6 +144,11 @@ services:
     description: SQLite vector database
     environment:
       DIMENSION: 768
+    profiles:
+      coarse:
+        environment:
+          DIMENSION: 128
+
 
 volumes:
   solar_system:
