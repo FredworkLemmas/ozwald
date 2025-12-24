@@ -7,6 +7,9 @@ import pytest
 import redis
 import requests
 import yaml
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _load_settings() -> dict:
@@ -18,6 +21,7 @@ def _load_settings() -> dict:
             "DEFAULT_OZWALD_CONFIG (or OZWALD_CONFIG) must point to the "
             "settings YAML for integration tests"
         )
+    print(f'settings path: "{settings_path}"')
     p = Path(settings_path)
     if not p.exists():
         raise RuntimeError(f"Settings file not found: {p}")

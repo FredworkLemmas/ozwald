@@ -136,14 +136,8 @@ def start_provisioner_api(
     src_dir = Path("src").absolute()
 
     # Config mount
-    default_rel_or_abs = os.environ.get(
-        "OZWALD_CONFIG", "dev/resources/settings.yml"
-    )
-    config_path = (
-        default_rel_or_abs
-        if str(default_rel_or_abs).startswith("/")
-        else str(Path(__file__).resolve().parents[2] / default_rel_or_abs)
-    )
+    default_rel_or_abs = os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+    config_path = str(Path(default_rel_or_abs).absolute())
     src_mount = ""
     if mount_source_dir:
         src_mount = f"-v {src_dir}:/app "
@@ -235,14 +229,8 @@ def start_provisioner_backend(
     gpu_opts = _compose_gpu_opts()
     src_dir = Path("src").absolute()
 
-    default_rel_or_abs = os.environ.get(
-        "OZWALD_CONFIG", "dev/resources/settings.yml"
-    )
-    config_path = (
-        default_rel_or_abs
-        if str(default_rel_or_abs).startswith("/")
-        else str(Path(__file__).resolve().parents[2] / default_rel_or_abs)
-    )
+    default_rel_or_abs = os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+    config_path = str(Path(default_rel_or_abs).absolute())
     src_mount = ""
     if mount_source_dir:
         src_mount = f"-v {src_dir}:/app "

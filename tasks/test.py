@@ -8,9 +8,7 @@ from invocate import task
 
 from tasks import start_provisioner, stop_provisioner
 
-DEFAULT_OZWALD_PROVISIONER = os.environ.get(
-    "DEFAULT_OZWALD_PROVISIONER", "unconfigured"
-)
+OZWALD_PROVISIONER = os.environ.get("OZWALD_PROVISIONER", "unconfigured")
 
 
 @task(namespace="test", name="unit")
@@ -23,7 +21,7 @@ def _ensure_temp_assets(
     *,
     temp_root: Optional[str] = None,
     reuse: bool = False,
-    provisioner_name: str = "jamma",
+    provisioner_name: str = None,
 ) -> Tuple[Path, Path]:
     """Create (or reuse) a temp settings.yml and volume directory.
 
@@ -47,6 +45,10 @@ def _ensure_temp_assets(
         )
         (solar_root / "saturn" / "titan.txt").write_text(
             "hazy moon\n", encoding="utf-8"
+        )
+
+        provisioner_name = provisioner_name or os.environ.get(
+            "OZWALD_PROVISIONER"
         )
 
         # Compose minimal settings
@@ -195,12 +197,12 @@ def integration(
         root_dir, settings_path = _ensure_temp_assets(
             temp_root=(temp_root or None),
             reuse=reuse_temp,
-            provisioner_name=DEFAULT_OZWALD_PROVISIONER,
+            provisioner_name=OZWALD_PROVISIONER,
         )
 
     # Export env so both backend container and pytest see the same config
     os.environ["OZWALD_CONFIG"] = str(settings_path)
-    os.environ["OZWALD_PROVISIONER"] = DEFAULT_OZWALD_PROVISIONER
+    os.environ["OZWALD_PROVISIONER"] = OZWALD_PROVISIONER
 
     # Stop/start provisioner stack with new config mounted
     stop_provisioner(c)
