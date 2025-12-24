@@ -58,26 +58,35 @@ class SystemProvisioner:
         if not _system_provisioner:
             config_reader = SystemConfigReader.singleton()
 
-            if "OZWALD_PROVISIONER" not in os.environ:
-                raise ValueError(
-                    "OZWALD_PROVISIONER environment variable not set"
-                )
-
             if not cache:
                 provisioner_cache = None
                 configured_provisioner_name = os.environ.get(
-                    "OZWALD_PROVISIONER", "unconfigured"
+                    "OZWALD_PROVISIONER"
                 )
+
+                if not configured_provisioner_name:
+                    if len(config_reader.provisioners) == 1:
+                        configured_provisioner_name = (
+                            config_reader.provisioners[0].name
+                        )
+                    else:
+                        configured_provisioner_name = "unconfigured"
+
                 for provisioner in config_reader.provisioners:
                     if provisioner.name == configured_provisioner_name:
                         provisioner_cache = provisioner.cache
+                        break
 
                 if not provisioner_cache:
-                    raise ValueError(
-                        "OZWALD_PROVISIONER: "
-                        f"{configured_provisioner_name} not found in "
-                        "configuration"
-                    )
+                    # If we still don't have a cache, and there are
+                    # provisioners, maybe we should just use the first one?
+                    if config_reader.provisioners:
+                        provisioner_cache = config_reader.provisioners[0].cache
+                    else:
+                        # No provisioners at all; this is a configuration error
+                        raise ValueError(
+                            "No provisioners found in configuration"
+                        )
             else:
                 provisioner_cache = cache
 

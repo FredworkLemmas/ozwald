@@ -213,6 +213,12 @@ def temp_settings_file(tmp_path_factory):
     (extras / "extra.txt").write_text("extra\n")
     (third / "third.txt").write_text("third\n")
 
+    provisioner_name = (
+        os.environ.get("OZWALD_PROVISIONER")
+        or os.environ.get("DEFAULT_OZWALD_PROVISIONER")
+        or "jamma"
+    )
+
     cfg = {
         "hosts": [{"name": "localhost", "ip": "127.0.0.1"}],
         "services": [
@@ -276,7 +282,24 @@ def temp_settings_file(tmp_path_factory):
                 },
             }
         ],
-        "provisioners": [],
+        "provisioners": [
+            {
+                "name": provisioner_name,
+                "host": "localhost",
+                "cache": {
+                    "type": "redis",
+                    "parameters": {
+                        "host": "localhost",
+                        "port": int(
+                            os.environ.get(
+                                "OZWALD_PROVISIONER_REDIS_PORT", 6479
+                            )
+                        ),
+                        "db": 14,
+                    },
+                },
+            }
+        ],
         "volumes": {
             "solar_system": {
                 "type": "bind",
@@ -301,14 +324,21 @@ def temp_settings_file(tmp_path_factory):
 @pytest.fixture(scope="module")
 def env_setup(temp_settings_file):
     # Ensure provisioner and config env are set
-    os.environ.setdefault(
+    mp = pytest.MonkeyPatch()
+    mp.setenv(
         "OZWALD_PROVISIONER",
-        os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
+        os.environ.get(
+            "OZWALD_PROVISIONER",
+            os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
+        ),
     )
-    os.environ["OZWALD_CONFIG"] = str(temp_settings_file)
+    mp.setenv("OZWALD_CONFIG", str(temp_settings_file))
     # Ensure a host is set for BaseProvisionableService
-    os.environ.setdefault("OZWALD_HOST", "localhost")
-    return os.environ.copy()
+    mp.setenv("OZWALD_HOST", os.environ.get("OZWALD_HOST", "localhost"))
+    try:
+        yield os.environ.copy()
+    finally:
+        mp.undo()
 
 
 @pytest.fixture(autouse=True)

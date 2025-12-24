@@ -130,11 +130,18 @@ def config_from_env() -> Path:
 @pytest.fixture(scope="module")
 def env_for_daemon(config_from_env: Path) -> dict:
     # Ensure provisioner is set; default to 'jamma' if not provided
-    os.environ.setdefault(
+    mp = pytest.MonkeyPatch()
+    mp.setenv(
         "OZWALD_PROVISIONER",
-        os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
+        os.environ.get(
+            "OZWALD_PROVISIONER",
+            os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
+        ),
     )
-    return os.environ.copy()
+    try:
+        yield os.environ.copy()
+    finally:
+        mp.undo()
 
 
 @pytest.fixture(autouse=True)

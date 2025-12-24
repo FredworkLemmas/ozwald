@@ -157,9 +157,14 @@ class ConfigReader:
         """Parse hosts section and create Host models."""
         hosts_data = self._raw_config.get("hosts", [])
 
-        for host_data in hosts_data:
+        for i, host_data in enumerate(hosts_data):
             resources = []
-            for resource_data in host_data.get("resources", []):
+            for j, resource_data in enumerate(host_data.get("resources", [])):
+                if "name" not in resource_data:
+                    raise KeyError(
+                        f"Resource at index {j} for host index {i} "
+                        "is missing 'name'"
+                    )
                 resource = Resource(
                     name=resource_data["name"],
                     type=resource_data["type"],
@@ -171,6 +176,11 @@ class ConfigReader:
                     ),
                 )
                 resources.append(resource)
+
+            if "name" not in host_data:
+                raise KeyError(f"Host entry at index {i} is missing 'name'")
+            if "ip" not in host_data:
+                raise KeyError(f"Host entry at index {i} is missing 'ip'")
 
             host = Host(
                 name=host_data["name"], ip=host_data["ip"], resources=resources
@@ -187,7 +197,12 @@ class ConfigReader:
         """
         services_data = self._raw_config.get("services", [])
 
-        for service_data in services_data:
+        for i, service_data in enumerate(services_data):
+            if "name" not in service_data:
+                raise KeyError(f"Service entry at index {i} is missing 'name'")
+            if "type" not in service_data:
+                raise KeyError(f"Service entry at index {i} is missing 'type'")
+
             # Parent (service-level) docker-compose-like fields
             parent_env = service_data.get("environment", {}) or {}
             parent_depends_on = service_data.get("depends_on", []) or []
@@ -394,13 +409,26 @@ class ConfigReader:
     def _parse_provisioners(self) -> None:
         """Parse top-level provisioners into Provisioner models."""
         provisioners_data = self._raw_config.get("provisioners", [])
-        for prov_data in provisioners_data:
+        for i, prov_data in enumerate(provisioners_data):
             prov_cache = None
             prov_cache_data = prov_data.get("cache")
             if prov_cache_data:
+                if "type" not in prov_cache_data:
+                    raise KeyError(
+                        f"Cache for provisioner at index {i} is missing 'type'"
+                    )
                 prov_cache = Cache(
                     type=prov_cache_data["type"],
                     parameters=prov_cache_data.get("parameters"),
+                )
+
+            if "name" not in prov_data:
+                raise KeyError(
+                    f"Provisioner entry at index {i} is missing 'name'"
+                )
+            if "host" not in prov_data:
+                raise KeyError(
+                    f"Provisioner entry at index {i} is missing 'host'"
                 )
 
             provisioner = Provisioner(
@@ -436,7 +464,6 @@ class SystemConfigReader(ConfigReader):
     def singleton(cls):
         global _system_config_reader
         if not _system_config_reader:
-            _system_config_reader = cls(
-                os.environ.get("OZWALD_CONFIG", "ozwald.yml")
-            )
+            config_path = os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+            _system_config_reader = cls(config_path)
         return _system_config_reader
