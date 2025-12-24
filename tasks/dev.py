@@ -224,15 +224,28 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
                     print(f"    {key}: {value}")
 
             # Profiles
-            profiles = service_data.get("profiles", [])
+            profiles = service_data.get("profiles", {})
             if profiles:
                 print(f"\n  Profiles ({len(profiles)}):")
-                for profile in profiles:
+                for profile in profiles.values():
                     profile_name = profile.get("name", "N/A")
                     print(f"    • {profile_name}")
                     p_env = profile.get("environment") or {}
                     if p_env:
                         for key, value in p_env.items():
+                            print(f"        {key}: {value}")
+
+            # Varieties
+            varieties = service_data.get("varieties", {})
+            if varieties:
+                print(f"\n  Varieties ({len(varieties)}):")
+                for v_name, v_data in varieties.items():
+                    print(f"    • {v_name}")
+                    if v_data.get("image"):
+                        print(f"        Image: {v_data['image']}")
+                    v_env = v_data.get("environment") or {}
+                    if v_env:
+                        for key, value in v_env.items():
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)
@@ -298,15 +311,28 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
                     print(f"    {key}: {value}")
 
             # Profiles
-            profiles = service_data.get("profiles", [])
+            profiles = service_data.get("profiles", {})
             if profiles:
                 print(f"\n  Profiles ({len(profiles)}):")
-                for profile in profiles:
+                for profile in profiles.values():
                     profile_name = profile.get("name", "N/A")
                     print(f"    • {profile_name}")
                     p_env = profile.get("environment") or {}
                     if p_env:
                         for key, value in p_env.items():
+                            print(f"        {key}: {value}")
+
+            # Varieties
+            varieties = service_data.get("varieties", {})
+            if varieties:
+                print(f"\n  Varieties ({len(varieties)}):")
+                for v_name, v_data in varieties.items():
+                    print(f"    • {v_name}")
+                    if v_data.get("image"):
+                        print(f"        Image: {v_data['image']}")
+                    v_env = v_data.get("environment") or {}
+                    if v_env:
+                        for key, value in v_env.items():
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)
