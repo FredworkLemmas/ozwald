@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import yaml
+from dotenv import load_dotenv
 
 from config.reader import SystemConfigReader
 from hosts.resources import HostResources
@@ -30,6 +31,7 @@ SERVICE_START_TIMEOUT = 20.0
 SERVICE_STOP_TIMEOUT = 20.0
 
 logger = get_logger()
+load_dotenv()
 
 _system_provisioner = None
 
