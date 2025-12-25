@@ -3,8 +3,7 @@ import sys
 
 
 def get_logger(name: str = __name__) -> logging.Logger:
-    """
-    Returns a configured logger that logs to console.
+    """Returns a configured logger that logs to console.
 
     Args:
         name: The name of the logger (typically __name__ from the
@@ -12,6 +11,7 @@ def get_logger(name: str = __name__) -> logging.Logger:
 
     Returns:
         A configured Logger instance
+
     """
     logger = logging.getLogger(name)
 

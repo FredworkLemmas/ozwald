@@ -74,7 +74,7 @@ class ContainerService(BaseProvisionableService):
         if current_service is None:
             raise RuntimeError(
                 f"Service {self._service_info.name} not found in"
-                " active services"
+                " active services",
             )
 
         # Raise error if service status is not set to starting
@@ -82,7 +82,7 @@ class ContainerService(BaseProvisionableService):
             raise RuntimeError(
                 f"Service {self._service_info.name} status is "
                 f"{current_service.status}, expected"
-                f" {ServiceStatus.STARTING}"
+                f" {ServiceStatus.STARTING}",
             )
 
         # Record start initiation time and persist to cache before
@@ -110,7 +110,7 @@ class ContainerService(BaseProvisionableService):
                 if not image:
                     logger.error(
                         "No container image specified for service"
-                        "f' {self._service_info.name}"
+                        "f' {self._service_info.name}",
                     )
                     return
 
@@ -128,7 +128,10 @@ class ContainerService(BaseProvisionableService):
                         "{{.Names}}",
                     ]
                     check = subprocess.run(
-                        inspect, capture_output=True, text=True
+                        inspect,
+                        check=False,
+                        capture_output=True,
+                        text=True,
                     )
                     exists = any(
                         line.strip() == name
@@ -137,6 +140,7 @@ class ContainerService(BaseProvisionableService):
                     if exists:
                         subprocess.run(
                             ["docker", "rm", "-f", name],
+                            check=False,
                             capture_output=True,
                             text=True,
                         )
@@ -150,12 +154,15 @@ class ContainerService(BaseProvisionableService):
                 logger.info(
                     "Starting container for service "
                     f"{self._service_info.name} with command: "
-                    f'"{" ".join(cmd)}"'
+                    f'"{" ".join(cmd)}"',
                 )
 
                 # start the container
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=True
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
                 )
                 container_id = result.stdout.strip()
 
@@ -173,7 +180,10 @@ class ContainerService(BaseProvisionableService):
                         container_id,
                     ]
                     check_result = subprocess.run(
-                        check_cmd, capture_output=True, text=True
+                        check_cmd,
+                        check=False,
+                        capture_output=True,
+                        text=True,
                     )
 
                     if (
@@ -182,7 +192,7 @@ class ContainerService(BaseProvisionableService):
                     ):
                         logger.info(
                             f"Container for service {self._service_info.name}"
-                            " is now running"
+                            " is now running",
                         )
 
                         # Update service status in cache
@@ -205,7 +215,8 @@ class ContainerService(BaseProvisionableService):
                             updated_services.append(service)
 
                         self._set_services_with_retry(
-                            active_services_cache, updated_services
+                            active_services_cache,
+                            updated_services,
                         )
                         return
 
@@ -214,17 +225,17 @@ class ContainerService(BaseProvisionableService):
 
                 logger.error(
                     f"Container for service {self._service_info.name} did not"
-                    " start within the expected time"
+                    " start within the expected time",
                 )
             except subprocess.CalledProcessError as e:
                 logger.error(
                     f"Failed to start container for service"
-                    f" {self._service_info.name}: {e}"
+                    f" {self._service_info.name}: {e}",
                 )
             except Exception as e:
                 logger.error(
                     "Unexpected error starting service "
-                    f"{self._service_info.name}: {e}"
+                    f"{self._service_info.name}: {e}",
                 )
 
         container_thread = threading.Thread(target=start_container, daemon=True)
@@ -249,14 +260,14 @@ class ContainerService(BaseProvisionableService):
         if current_service is None:
             raise RuntimeError(
                 f"Service {self._service_info.name} not found in"
-                " active services"
+                " active services",
             )
 
         if current_service.status != ServiceStatus.STOPPING:
             raise RuntimeError(
                 f"Service {self._service_info.name} status is"
                 f" {current_service.status}, expected"
-                f" {ServiceStatus.STOPPING}"
+                f" {ServiceStatus.STOPPING}",
             )
 
         def stop_container():
@@ -264,7 +275,7 @@ class ContainerService(BaseProvisionableService):
                 # Determine container ID or name
                 container_identifier = None
                 if current_service.info and current_service.info.get(
-                    "container_id"
+                    "container_id",
                 ):
                     container_identifier = current_service.info["container_id"]
                 else:
@@ -272,18 +283,21 @@ class ContainerService(BaseProvisionableService):
 
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
-                    stop_cmd, capture_output=True, text=True
+                    stop_cmd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
                 )
 
                 if result.returncode == 0:
                     logger.info(
                         f"Container for service {self._service_info.name}"
-                        " stopped and removed successfully"
+                        " stopped and removed successfully",
                     )
                 else:
                     logger.warning(
                         f"Failed to stop/remove container for service"
-                        f" {self._service_info.name}: {result.stderr}"
+                        f" {self._service_info.name}: {result.stderr}",
                     )
 
                 # Update cache: remove or mark stopped
@@ -299,12 +313,13 @@ class ContainerService(BaseProvisionableService):
                     updated_services.append(service)
 
                 self._set_services_with_retry(
-                    active_services_cache, updated_services
+                    active_services_cache,
+                    updated_services,
                 )
             except Exception as e:
                 logger.error(
                     "Unexpected error stopping service "
-                    f"{self._service_info.name}: {e}"
+                    f"{self._service_info.name}: {e}",
                 )
 
         container_thread = threading.Thread(target=stop_container, daemon=True)
@@ -371,7 +386,9 @@ class ContainerService(BaseProvisionableService):
                 return ""
 
         def _merge_volumes(
-            base_list: list[str], var_list: list[str], prof_list: list[str]
+            base_list: list[str],
+            var_list: list[str],
+            prof_list: list[str],
         ) -> list[str]:
             order: list[str] = []  # target order
             by_target: dict[str, str] = {}
@@ -420,12 +437,15 @@ class ContainerService(BaseProvisionableService):
         return effective
 
     def _get_effective_environment(
-        self, service_info: ServiceInformation
+        self,
+        service_info: ServiceInformation,
     ) -> dict:
         service_def = self.get_service_definition()
         variety = self.get_variety()
         resolved = self._resolve_effective_fields(
-            service_def, service_info.profile, variety
+            service_def,
+            service_info.profile,
+            variety,
         )
         return resolved.get("environment", {}) or {}
 
@@ -437,7 +457,9 @@ class ContainerService(BaseProvisionableService):
             service_info = self.get_service_information()
             service_def = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                service_def, service_info.profile, service_info.variety
+                service_def,
+                service_info.profile,
+                service_info.variety,
             )
             return resolved.get("image") or ""
         except Exception:
@@ -448,7 +470,9 @@ class ContainerService(BaseProvisionableService):
             si = self.get_service_information()
             sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                sd, si.profile, si.variety
+                sd,
+                si.profile,
+                si.variety,
             )
             return resolved.get("depends_on") or []
         except Exception:
@@ -459,7 +483,9 @@ class ContainerService(BaseProvisionableService):
             si = self.get_service_information()
             sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                sd, si.profile, si.variety
+                sd,
+                si.profile,
+                si.variety,
             )
             return resolved.get("command")
         except Exception:
@@ -470,7 +496,9 @@ class ContainerService(BaseProvisionableService):
             si = self.get_service_information()
             sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                sd, si.profile, si.variety
+                sd,
+                si.profile,
+                si.variety,
             )
             return resolved.get("entrypoint")
         except Exception:
@@ -481,7 +509,9 @@ class ContainerService(BaseProvisionableService):
             si = self.get_service_information()
             sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                sd, si.profile, si.variety
+                sd,
+                si.profile,
+                si.variety,
             )
             return resolved.get("env_file") or []
         except Exception:
@@ -562,7 +592,7 @@ class ContainerService(BaseProvisionableService):
             return self.container_environment
         try:
             return self._get_effective_environment(
-                self.get_service_information()
+                self.get_service_information(),
             )
         except Exception:
             return None
@@ -575,7 +605,9 @@ class ContainerService(BaseProvisionableService):
             si = self.get_service_information()
             sd = self.get_service_definition()
             resolved = self._resolve_effective_fields(
-                sd, si.profile, si.variety
+                sd,
+                si.profile,
+                si.variety,
             )
             return resolved.get("volumes") or []
         except Exception:
@@ -589,7 +621,9 @@ class ContainerService(BaseProvisionableService):
 
     # --- Cache helper used by lifecycle ---
     def _set_services_with_retry(
-        self, active_services_cache: ActiveServicesCache, services
+        self,
+        active_services_cache: ActiveServicesCache,
+        services,
     ):
         deadline = time.time() + 5.0
         attempt = 0
@@ -621,6 +655,7 @@ class ContainerService(BaseProvisionableService):
                 time.sleep(0.5)
             except Exception as e:
                 logger.error(
-                    "Unexpected error while setting services: %s", str(e)
+                    "Unexpected error while setting services: %s",
+                    str(e),
                 )
                 raise

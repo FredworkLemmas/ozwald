@@ -1,12 +1,9 @@
 import json
-import logging
 from typing import List
 
 import redis
 
 from orchestration.models import Cache, ServiceInformation
-
-logger = logging.getLogger(__name__)
 
 
 class WriteCollision(Exception):
@@ -14,8 +11,7 @@ class WriteCollision(Exception):
 
 
 class ActiveServicesCache:
-    """
-    Redis-based cache for storing and retrieving active service
+    """Redis-based cache for storing and retrieving active service
     information.
     """
 
@@ -24,12 +20,12 @@ class ActiveServicesCache:
     LOCK_TIMEOUT = 1  # seconds
 
     def __init__(self, cache: Cache):
-        """
-        Initialize the active services cache.
+        """Initialize the active services cache.
 
         Args:
             cache: Cache configuration object containing Redis connection
                 parameters
+
         """
         self.cache = cache
         self._redis_client = self._initialize_redis_client()
@@ -51,12 +47,12 @@ class ActiveServicesCache:
         )
 
     def set_services(self, services: List[ServiceInformation]) -> None:
-        """
-        Store the active services list in the cache with locking to
+        """Store the active services list in the cache with locking to
         prevent race conditions.
 
         Args:
             services: List of ServiceInformation objects to cache
+
         """
         # Acquire lock with timeout
         lock = self._redis_client.lock(self.LOCK_KEY, timeout=self.LOCK_TIMEOUT)
@@ -79,17 +75,19 @@ class ActiveServicesCache:
                     lock.release()
             else:
                 raise WriteCollision(
-                    "Failed to acquire lock for setting active services"
+                    "Failed to acquire lock for setting active services",
                 )
         except redis.exceptions.LockError as e:
-            raise RuntimeError(f"Lock error while setting active services: {e}")
+            raise RuntimeError(
+                f"Lock error while setting active services: {e}",
+            ) from e
 
     def get_services(self) -> List[ServiceInformation]:
-        """
-        Retrieve the active services list from the cache.
+        """Retrieve the active services list from the cache.
 
         Returns:
             List of ServiceInformation objects, or empty list if not found
+
         """
         # Retrieve JSON data from Redis
         json_data = self._redis_client.get(self.CACHE_KEY)

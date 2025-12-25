@@ -1,4 +1,5 @@
 import os
+import pathlib
 import signal
 import subprocess
 import tempfile
@@ -11,14 +12,15 @@ from dotenv import load_dotenv
 
 from config.reader import SystemConfigReader
 from hosts.resources import HostResources
-from orchestration.models import ConfiguredServiceIdentifier, ProfilerAction
 from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
+from util.footprint_request_cache import FootprintRequestCache
 from util.logger import get_logger
-from util.profiler_request_cache import ProfilerRequestCache
 
 from .models import (
     Cache,
+    ConfiguredServiceIdentifier,
+    FootprintAction,
     Resource,
     Service,
     ServiceDefinition,
@@ -40,15 +42,17 @@ class SystemProvisioner:
     """Singleton provisioner that manages service lifecycle and resources"""
 
     def __init__(
-        self, config_reader: SystemConfigReader, cache: Optional[Cache] = None
+        self,
+        config_reader: SystemConfigReader,
+        cache: Optional[Cache] = None,
     ):
         self.config_reader = config_reader
         self._cache = cache
         self._active_services_cache = (
             ActiveServicesCache(cache) if cache else None
         )
-        self._profiler_request_cache = (
-            ProfilerRequestCache(cache) if cache else None
+        self._footprint_request_cache = (
+            FootprintRequestCache(cache) if cache else None
         )
 
     def get_cache(self) -> Cache:
@@ -63,7 +67,7 @@ class SystemProvisioner:
             if not cache:
                 provisioner_cache = None
                 configured_provisioner_name = os.environ.get(
-                    "OZWALD_PROVISIONER"
+                    "OZWALD_PROVISIONER",
                 )
 
                 if not configured_provisioner_name:
@@ -87,13 +91,14 @@ class SystemProvisioner:
                     else:
                         # No provisioners at all; this is a configuration error
                         raise ValueError(
-                            "No provisioners found in configuration"
+                            "No provisioners found in configuration",
                         )
             else:
                 provisioner_cache = cache
 
             _system_provisioner = cls(
-                config_reader=config_reader, cache=provisioner_cache
+                config_reader=config_reader,
+                cache=provisioner_cache,
             )
             # Prepare NFS mounts defined at top-level volumes before use
             try:
@@ -113,14 +118,15 @@ class SystemProvisioner:
         return []
 
     def update_services(
-        self, service_updates: List[ServiceInformation]
+        self,
+        service_updates: List[ServiceInformation],
     ) -> bool:
-        """
-        Update active services based on provided service information.
+        """Update active services based on provided service information.
         This initiates activation/deactivation of services.
 
         Returns:
             True if services were successfully updated, False otherwise.
+
         """
         if not self._active_services_cache:
             return False
@@ -165,7 +171,7 @@ class SystemProvisioner:
         while time.time() - start_time < 2.0:
             try:
                 self._active_services_cache.set_services(
-                    active_service_info_objects
+                    active_service_info_objects,
                 )
                 return True
             except WriteCollision:
@@ -173,7 +179,7 @@ class SystemProvisioner:
 
         logger.error(
             "Failed to update services: timeout after 2 seconds "
-            "due to write collisions"
+            "due to write collisions",
         )
         return False
 
@@ -192,7 +198,7 @@ class SystemProvisioner:
                 value=host_resources.available_cpu_cores,
                 related_resources=None,
                 extended_attributes={"total": host_resources.total_cpu_cores},
-            )
+            ),
         )
 
         # Memory resource
@@ -204,7 +210,7 @@ class SystemProvisioner:
                 value=host_resources.available_ram_gb,
                 related_resources=None,
                 extended_attributes={"total": host_resources.total_ram_gb},
-            )
+            ),
         )
 
         # VRAM resource
@@ -221,25 +227,28 @@ class SystemProvisioner:
                         "gpu_details": {
                             str(gpu_id): {
                                 "total": host_resources.gpuid_to_total_vram.get(
-                                    gpu_id, 0
+                                    gpu_id,
+                                    0,
                                 ),
                                 "available": (
                                     host_resources.gpuid_to_available_vram.get(
-                                        gpu_id, 0
+                                        gpu_id,
+                                        0,
                                     )
                                 ),
                             }
                             for gpu_id in range(host_resources.total_gpus)
                         },
                     },
-                )
+                ),
             )
 
             # GPU resource
             for gpu_id in range(host_resources.total_gpus):
                 vram_total = host_resources.gpuid_to_total_vram.get(gpu_id, 0)
                 vram_avail = host_resources.gpuid_to_available_vram.get(
-                    gpu_id, 0
+                    gpu_id,
+                    0,
                 )
                 is_available = (
                     1.0 if gpu_id in host_resources.available_gpus else 0.0
@@ -256,7 +265,7 @@ class SystemProvisioner:
                             "vram_total": vram_total,
                             "vram_available": vram_avail,
                         },
-                    )
+                    ),
                 )
 
         return resources
@@ -271,7 +280,7 @@ class SystemProvisioner:
         if not self._active_services_cache:
             logger.error(
                 "Active services cache not initialized; "
-                "backend daemon cannot run"
+                "backend daemon cannot run",
             )
             return
 
@@ -281,8 +290,9 @@ class SystemProvisioner:
         def _handle_signal(signum, frame):
             nonlocal running
             logger.info(
-                "Provisioner backend received signal "
-                f"{signum}; shutting down gracefully..."
+                "Provisioner backend received signal %s; "
+                "shutting down gracefully...",
+                signum,
             )
             running = False
 
@@ -294,7 +304,7 @@ class SystemProvisioner:
             # not permitted
             logger.debug(
                 "Signal handlers could not be registered; proceeding "
-                "without them"
+                "without them",
             )
 
         while running:
@@ -304,12 +314,13 @@ class SystemProvisioner:
                     self._active_services_cache.get_services()
                 )
 
-                # If there are no active services, check for profiling requests
-                if not active_services and self._profiler_request_cache:
-                    requests = self._profiler_request_cache.get_requests()
+                # If there are no active services, check for footprinting
+                # requests
+                if not active_services and self._footprint_request_cache:
+                    requests = self._footprint_request_cache.get_requests()
                     if requests:
                         # Process one request at a time
-                        self._handle_profiler_request(requests[0])
+                        self._handle_footprint_request(requests[0])
                         # After processing, loop again (do not sleep long)
                         time.sleep(0.2)
                         continue
@@ -322,7 +333,7 @@ class SystemProvisioner:
                 now = datetime.now()
 
                 for idx, svc_info in enumerate(active_services):
-                    logger.info(f"examining service: {svc_info}")
+                    logger.info("examining service: %s", svc_info)
                     try:
                         # Only act on services with STARTING or STOPPING status
                         if svc_info.status not in (
@@ -334,7 +345,7 @@ class SystemProvisioner:
                         # Resolve the service definition to get the concrete
                         # service type
                         service_def = self.config_reader.get_service_by_name(
-                            svc_info.service
+                            svc_info.service,
                         )
                         if not service_def:
                             logger.error(
@@ -345,23 +356,25 @@ class SystemProvisioner:
                                 + (
                                     "found for active service "
                                     f"'{svc_info.name}'"
-                                )
+                                ),
                             )
                             continue
 
                         service_type_str = getattr(
-                            service_def.type, "value", str(service_def.type)
+                            service_def.type,
+                            "value",
+                            str(service_def.type),
                         )
 
                         # Lookup the service class
                         service_cls = BaseProvisionableService._lookup_service(
-                            service_type_str
+                            service_type_str,
                         )
                         if not service_cls:
                             logger.error(
                                 "No provisionable service implementation found"
                                 f" for type '{service_type_str}' "
-                                f"(service '{svc_info.name}')"
+                                f"(service '{svc_info.name}')",
                             )
                             continue
 
@@ -379,13 +392,13 @@ class SystemProvisioner:
                             logger.info("service is starting")
                             # Check duplicate initiation within timeout
                             start_initiated_iso = svc_info.info.get(
-                                "start_initiated"
+                                "start_initiated",
                             )
                             logger.info("past info check")
                             if start_initiated_iso:
                                 try:
                                     started_when = datetime.fromisoformat(
-                                        start_initiated_iso
+                                        start_initiated_iso,
                                     )
                                     if (
                                         now - started_when
@@ -407,7 +420,7 @@ class SystemProvisioner:
                             # Instantiate and start the service
                             try:
                                 service_instance = service_cls(
-                                    service_info=svc_info
+                                    service_info=svc_info,
                                 )
                             except Exception as e:
                                 logger.error(
@@ -427,7 +440,7 @@ class SystemProvisioner:
 
                             try:
                                 logger.info(
-                                    f"starting service: {svc_info.name}"
+                                    f"starting service: {svc_info.name}",
                                 )
                                 service_instance.start()
                             except Exception as e:
@@ -449,12 +462,12 @@ class SystemProvisioner:
                         # STOPPING flow
                         elif svc_info.status == ServiceStatus.STOPPING:
                             stop_initiated_iso = svc_info.info.get(
-                                "stop_initiated"
+                                "stop_initiated",
                             )
                             if stop_initiated_iso:
                                 try:
                                     stopped_when = datetime.fromisoformat(
-                                        stop_initiated_iso
+                                        stop_initiated_iso,
                                     )
                                     if (
                                         now - stopped_when
@@ -475,7 +488,7 @@ class SystemProvisioner:
                             # Instantiate and stop the service
                             try:
                                 service_instance = service_cls(
-                                    service_info=svc_info
+                                    service_info=svc_info,
                                 )
                             except Exception as e:
                                 logger.error(
@@ -495,7 +508,9 @@ class SystemProvisioner:
                             try:
                                 # Some services may not implement stop yet
                                 stop_fn = getattr(
-                                    service_instance, "stop", None
+                                    service_instance,
+                                    "stop",
+                                    None,
                                 )
                                 if callable(stop_fn):
                                     stop_fn()
@@ -552,7 +567,7 @@ class SystemProvisioner:
                     while True:
                         try:
                             self._active_services_cache.set_services(
-                                active_services
+                                active_services,
                             )
                             break
                         except (WriteCollision, RuntimeError) as e:
@@ -574,7 +589,7 @@ class SystemProvisioner:
                             break
 
             except Exception as e:
-                logger.error(f"Backend daemon loop encountered an error: {e}")
+                logger.error("Backend daemon loop encountered an error: %s", e)
 
             time.sleep(BACKEND_DAEMON_SLEEP_TIME)
 
@@ -595,7 +610,7 @@ class SystemProvisioner:
         if not vols:
             return
         mount_root = os.environ.get("OZWALD_NFS_MOUNTS", "/exports")
-        os.makedirs(mount_root, exist_ok=True)
+        pathlib.Path(mount_root).mkdir(exist_ok=True, parents=True)
         for name, spec in vols.items():
             if spec.get("type") != "nfs":
                 continue
@@ -603,7 +618,7 @@ class SystemProvisioner:
             path = spec.get("path")
             opts = spec.get("options")
             mountpoint = os.path.join(mount_root, name)
-            os.makedirs(mountpoint, exist_ok=True)
+            pathlib.Path(mountpoint).mkdir(exist_ok=True, parents=True)
             if self._is_mountpoint(mountpoint):
                 continue
             # Build mount command
@@ -617,11 +632,13 @@ class SystemProvisioner:
                 elif isinstance(opts, str):
                     cmd += ["-o", opts]
             cmd += [src, mountpoint]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, check=False, capture_output=True, text=True
+            )
             if result.returncode != 0:
                 raise RuntimeError(
                     f"Failed to mount NFS {src} -> {mountpoint}: "
-                    f"{result.stderr or result.stdout}"
+                    f"{result.stderr or result.stdout}",
                 )
             logger.info("Mounted NFS %s -> %s", src, mountpoint)
 
@@ -629,7 +646,7 @@ class SystemProvisioner:
         try:
             # Prefer /proc/self/mounts check for robustness
             mp = False
-            with open("/proc/self/mounts") as f:
+            with pathlib.Path("/proc/self/mounts").open() as f:
                 for line in f:
                     try:
                         parts = line.split()
@@ -646,25 +663,24 @@ class SystemProvisioner:
             return False
 
     # ------------------------------------------------------------------
-    # Profiling support
+    # Footprinting support
     # ------------------------------------------------------------------
 
-    def _handle_profiler_request(self, request: ProfilerAction) -> None:
+    def _handle_footprint_request(self, request: FootprintAction) -> None:
+        """Handle a single footprinting request: footprint services and write
+        YAML, then remove from cache.
         """
-        Handle a single profiling request: profile services and write YAML,
-        then remove from cache.
-        """
-        if not self._profiler_request_cache or not self._active_services_cache:
+        if not self._footprint_request_cache or not self._active_services_cache:
             return
 
         # Mark as in-progress
-        request.profile_in_progress = True
-        request.profile_started_at = datetime.now()
-        self._profiler_request_cache.update_profile_request(request)
+        request.footprint_in_progress = True
+        request.footprint_started_at = datetime.now()
+        self._footprint_request_cache.update_footprint_request(request)
 
         # Determine targets
         targets: List[ConfiguredServiceIdentifier] = []
-        if request.profile_all_services:
+        if request.footprint_all_services:
             for svc_def in self.config_reader.services:
                 if svc_def.profiles:
                     for prof in svc_def.profiles:
@@ -672,29 +688,30 @@ class SystemProvisioner:
                             ConfiguredServiceIdentifier(
                                 service_name=svc_def.service_name,
                                 profile=prof.name,
-                            )
+                            ),
                         )
                 else:
                     targets.append(
                         ConfiguredServiceIdentifier(
-                            service_name=svc_def.service_name, profile="default"
-                        )
+                            service_name=svc_def.service_name,
+                            profile="default",
+                        ),
                     )
         else:
             targets = request.services or []
 
-        # Ensure system is unloaded before profiling
+        # Ensure system is unloaded before footprinting
         if self._active_services_cache.get_services():
             # If not unloaded, skip processing now
             return
 
-        # Profile each target sequentially
+        # Footprint each target sequentially
         for target in targets:
             try:
-                self._profile_single_service(target)
+                self._footprint_single_service(target)
             except Exception as e:
                 logger.error(
-                    "Profiling error for %s:%s - %s",
+                    "Footprinting error for %s:%s - %s",
                     target.service_name,
                     target.profile,
                     e,
@@ -702,27 +719,28 @@ class SystemProvisioner:
 
         # Remove the handled request from cache
         try:
-            current = self._profiler_request_cache.get_requests()
+            current = self._footprint_request_cache.get_requests()
             remaining = [
                 r for r in current if r.request_id != request.request_id
             ]
-            self._profiler_request_cache.set_requests(remaining)
+            self._footprint_request_cache.set_requests(remaining)
         except Exception as e:
             logger.error(
-                "Failed to remove completed profiler request %s: %s",
+                "Failed to remove completed footprint request %s: %s",
                 request.request_id,
                 e,
             )
 
-    def _profile_single_service(
-        self, target: ConfiguredServiceIdentifier
+    def _footprint_single_service(
+        self,
+        target: ConfiguredServiceIdentifier,
     ) -> None:
-        """Profile a single configured service/profile."""
+        """Footprint a single configured service/profile."""
         # Measure pre state
         pre = HostResources.inspect_host()
 
         # Construct a unique service instance name
-        inst_name = f"prof-{target.service_name}-{target.profile}"
+        inst_name = f"foot-{target.service_name}-{target.profile}"
 
         # Activate the service
         svc_info = ServiceInformation(
@@ -743,14 +761,15 @@ class SystemProvisioner:
         # Compute deltas
         usage = {
             "cpu_cores": max(
-                0, pre.available_cpu_cores - post.available_cpu_cores
+                0,
+                pre.available_cpu_cores - post.available_cpu_cores,
             ),
             "memory_gb": max(0.0, pre.available_ram_gb - post.available_ram_gb),
             "vram_gb": max(0.0, pre.available_vram_gb - post.available_vram_gb),
         }
 
         # Persist to YAML
-        self._write_profile_usage(target.service_name, target.profile, usage)
+        self._write_footprint_usage(target.service_name, target.profile, usage)
 
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
@@ -761,7 +780,9 @@ class SystemProvisioner:
         self._active_services_cache.set_services([])
 
     def _wait_for_start_completed(
-        self, instance_name: str, timeout: float = 60.0
+        self,
+        instance_name: str,
+        timeout: float = 60.0,
     ) -> None:
         start = time.time()
         while time.time() - start < timeout:
@@ -777,13 +798,15 @@ class SystemProvisioner:
         logger.warning(
             (
                 "Timeout waiting for service %s to start; proceeding with "
-                "profiling anyway"
+                "footprinting anyway"
             ),
             instance_name,
         )
 
     def _wait_for_stop_completed(
-        self, instance_name: str, timeout: float = 60.0
+        self,
+        instance_name: str,
+        timeout: float = 60.0,
     ) -> None:
         start = time.time()
         while time.time() - start < timeout:
@@ -797,30 +820,37 @@ class SystemProvisioner:
                     return
             time.sleep(0.5)
         logger.warning(
-            f"Timeout waiting for service {instance_name} to stop; continuing"
+            "Timeout waiting for service %s to stop; continuing",
+            instance_name,
         )
 
-    def _write_profile_usage(
-        self, service_name: str, profile: str, usage: dict
+    def _write_footprint_usage(
+        self,
+        service_name: str,
+        profile: str,
+        usage: dict,
     ) -> None:
         """Write or update the YAML file with usage info."""
         # Resolve output path, preferring environment override.
         # Avoid hardcoded /tmp to satisfy Bandit B108 and improve portability.
         default_path = os.path.join(
-            tempfile.gettempdir(), "ozwald-profiles.yml"
+            tempfile.gettempdir(),
+            "ozwald-footprints.yml",
         )
-        path = os.environ.get("OZWALD_PROFILER_DATA", default_path)
+        path = os.environ.get("OZWALD_FOOTPRINT_DATA", default_path)
         parent_dir = os.path.dirname(path) or "."
 
         data = {}
         try:
-            if os.path.exists(path):
-                with open(path, encoding="utf-8") as f:
+            if pathlib.Path(path).exists():
+                with pathlib.Path(path).open(encoding="utf-8") as f:
                     loaded = yaml.safe_load(f)
                     if isinstance(loaded, dict):
                         data = loaded
         except Exception as e:
-            logger.warning(f"Could not read profiler data file '{path}': {e}")
+            logger.warning(
+                "Could not read footprint data file '%s': %s", path, e
+            )
 
         svc_block = data.get(service_name, {})
         svc_block[profile] = usage
@@ -828,38 +858,43 @@ class SystemProvisioner:
 
         try:
             # Ensure parent directory exists with restrictive permissions
-            os.makedirs(parent_dir, mode=0o700, exist_ok=True)
+            pathlib.Path(parent_dir).mkdir(
+                mode=0o700, exist_ok=True, parents=True
+            )
 
             # Atomic write: write to a temp file in the same directory,
             # then replace
             fd, tmp_path = tempfile.mkstemp(
-                prefix=".ozwald-profiles.", dir=parent_dir, text=True
+                prefix=".ozwald-footprints.",
+                dir=parent_dir,
+                text=True,
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     yaml.safe_dump(data, f, sort_keys=True)
                 # Restrict permissions on the new file
-                os.chmod(tmp_path, 0o600)
-                os.replace(tmp_path, path)
+                pathlib.Path(tmp_path).chmod(0o600)
+                pathlib.Path(tmp_path).replace(path)
             finally:
                 # In case of exceptions before replace, try to clean up
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+                if pathlib.Path(tmp_path).exists():
+                    pathlib.Path(tmp_path).unlink()
         except Exception as e:
-            logger.error(f"Failed to write profiler data to '{path}': {e}")
+            logger.error("Failed to write footprint data to '%s': %s", path, e)
 
     def _init_service(
-        self, service_info: ServiceInformation
+        self,
+        service_info: ServiceInformation,
     ) -> ServiceInformation:
-        """init a new service def."""
+        """Init a new service def."""
         # read service definition
         service_def = self.config_reader.get_service_by_name(
-            service_info.service
+            service_info.service,
         )
         if not service_def:
             raise ValueError(
                 "Service definition '" + service_info.service + "' "
-                "not found in configuration"
+                "not found in configuration",
             )
 
         service_info.status = ServiceStatus.STARTING
@@ -873,5 +908,5 @@ if __name__ == "__main__":
         logger.info("Starting SystemProvisioner backend daemon...")
         provisioner.run_backend_daemon()
     except Exception as e:
-        logger.error(f"Provisioner backend daemon exited with error: {e}")
+        logger.error("Provisioner backend daemon exited with error: %s", e)
         raise

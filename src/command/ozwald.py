@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import re
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -21,12 +23,12 @@ load_dotenv()
 DEFAULT_OZWALD_SYSTEM_KEY = "jenny8675"
 DEFAULT_PROVISIONER_PORT = int(os.environ.get("OZWALD_PROVISIONER_PORT", 8000))
 DEFAULT_PROVISIONER_REDIS_PORT = int(
-    os.environ.get("OZWALD_PROVISIONER_REDIS_PORT", 6479)
+    os.environ.get("OZWALD_PROVISIONER_REDIS_PORT", 6479),
 )
 
 
 def _run(cmd: str, capture: bool = False) -> subprocess.CompletedProcess:
-    kwargs: Dict[str, Any] = {"shell": True, "text": True}
+    kwargs: dict[str, Any] = {"shell": True, "text": True}
     if capture:
         kwargs.update({"stdout": subprocess.PIPE, "stderr": subprocess.PIPE})
     return subprocess.run(cmd, **kwargs)
@@ -55,7 +57,7 @@ def _print_host_resources(resources: HostResources) -> None:
     print(
         "  Available GPUs:   "
         f"{len(resources.available_gpus)} "
-        f"(IDs: {resources.available_gpus})"
+        f"(IDs: {resources.available_gpus})",
     )
     print(f"  Total VRAM:       {resources.total_vram_gb:6.2f} GB")
     print(f"  Available VRAM:   {resources.available_vram_gb:6.2f} GB")
@@ -82,7 +84,8 @@ def _print_host_resources(resources: HostResources) -> None:
 
 
 def _print_services_list(
-    title: str, services_data: List[Dict[str, Any]]
+    title: str,
+    services_data: list[dict[str, Any]],
 ) -> None:
     if not services_data:
         print(f"\nNo {title.lower()} found.")
@@ -156,7 +159,9 @@ def _print_services_list(
 
 
 def action_start_provisioner(
-    api_port: int, redis_port: int, restart: bool
+    api_port: int,
+    redis_port: int,
+    restart: bool,
 ) -> int:
     print("Starting provisioner stack: network -> redis -> backend -> api ...")
     svc.ensure_provisioner_network()
@@ -256,17 +261,17 @@ def action_status() -> int:
     return 0 if all_ok else 1
 
 
-def _bracket_tokens(s: str) -> List[str]:
+def _bracket_tokens(s: str) -> list[str]:
     return [m.group(1) for m in re.finditer(r"\[([^\]]*)\]", s)]
 
 
 def _parse_services_spec_entry(
     entry: str,
     cfg: SystemConfigReader,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if "[" not in entry or "]" not in entry:
         raise ValueError(
-            "Invalid service spec entry; expected NAME[service]..."
+            "Invalid service spec entry; expected NAME[service]...",
         )
     name_part = entry.split("[", 1)[0].strip()
     if not name_part:
@@ -285,57 +290,56 @@ def _parse_services_spec_entry(
     varieties = set((svc_def.varieties or {}).keys()) if svc_def else set()
     profiles = set((svc_def.profiles or {}).keys()) if svc_def else set()
 
-    variety: Optional[str] = None
-    profile: Optional[str] = None
+    variety: str | None = None
+    profile: str | None = None
 
     if len(tokens) >= 2:
         tok2 = tokens[1]
         if tok2 == "":
             # explicit empty means None for variety
             variety = None
-        else:
-            # Disambiguate second token using config knowledge
-            if profiles and not varieties:
-                # Treat as profile when only profiles exist
-                if tok2 not in profiles:
-                    raise ValueError(
-                        f"Unknown profile '{tok2}' for service '{service_name}'"
-                    )
-                profile = tok2
-            elif varieties and not profiles:
-                if tok2 not in varieties:
-                    raise ValueError(
-                        f"Unknown variety '{tok2}' for service '{service_name}'"
-                    )
-                variety = tok2
-            elif varieties or profiles:
-                in_var = tok2 in varieties
-                in_prof = tok2 in profiles
-                if in_var and not in_prof:
-                    variety = tok2
-                elif in_prof and not in_var:
-                    profile = tok2
-                else:
-                    # ambiguous or unknown
-                    known_v = ", ".join(sorted(varieties)) or "<none>"
-                    known_p = ", ".join(sorted(profiles)) or "<none>"
-                    raise ValueError(
-                        "Ambiguous or unknown token '"
-                        + tok2
-                        + f"' for service '{service_name}'. "
-                        + "Known varieties: "
-                        + known_v
-                        + "; known profiles: "
-                        + known_p
-                        + ". Use [] to skip variety when specifying "
-                        + "a profile, or provide all three tokens."
-                    )
-            else:
-                # No knowledge available; fail fast per requirement
+        # Disambiguate second token using config knowledge
+        elif profiles and not varieties:
+            # Treat as profile when only profiles exist
+            if tok2 not in profiles:
                 raise ValueError(
-                    f"No varieties/profiles defined for '{service_name}', "
-                    f"but received extra token '{tok2}'."
+                    f"Unknown profile '{tok2}' for service '{service_name}'",
                 )
+            profile = tok2
+        elif varieties and not profiles:
+            if tok2 not in varieties:
+                raise ValueError(
+                    f"Unknown variety '{tok2}' for service '{service_name}'",
+                )
+            variety = tok2
+        elif varieties or profiles:
+            in_var = tok2 in varieties
+            in_prof = tok2 in profiles
+            if in_var and not in_prof:
+                variety = tok2
+            elif in_prof and not in_var:
+                profile = tok2
+            else:
+                # ambiguous or unknown
+                known_v = ", ".join(sorted(varieties)) or "<none>"
+                known_p = ", ".join(sorted(profiles)) or "<none>"
+                raise ValueError(
+                    "Ambiguous or unknown token '"
+                    + tok2
+                    + f"' for service '{service_name}'. "
+                    + "Known varieties: "
+                    + known_v
+                    + "; known profiles: "
+                    + known_p
+                    + ". Use [] to skip variety when specifying "
+                    + "a profile, or provide all three tokens.",
+                )
+        else:
+            # No knowledge available; fail fast per requirement
+            raise ValueError(
+                f"No varieties/profiles defined for '{service_name}', "
+                f"but received extra token '{tok2}'.",
+            )
 
     if len(tokens) >= 3:
         tok3 = tokens[2]
@@ -344,7 +348,7 @@ def _parse_services_spec_entry(
         else:
             if profiles and tok3 not in profiles:
                 raise ValueError(
-                    f"Unknown profile '{tok3}' for service '{service_name}'"
+                    f"Unknown profile '{tok3}' for service '{service_name}'",
                 )
             profile = tok3
 
@@ -356,9 +360,9 @@ def _parse_services_spec_entry(
     }
 
 
-def _parse_services_spec(spec: str) -> List[Dict[str, Any]]:
+def _parse_services_spec(spec: str) -> list[dict[str, Any]]:
     cfg = SystemConfigReader.singleton()
-    result: List[Dict[str, Any]] = []
+    result: list[dict[str, Any]] = []
     for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
         result.append(_parse_services_spec_entry(raw, cfg))
     if not result:
@@ -366,16 +370,16 @@ def _parse_services_spec(spec: str) -> List[Dict[str, Any]]:
     return result
 
 
-def action_update_services(port: int, clear: bool, spec: Optional[str]) -> int:
+def action_update_services(port: int, clear: bool, spec: str | None) -> int:
     print("**** HERE **** ")
     try:
         if clear:
-            body: List[Dict[str, Any]] = []
+            body: list[dict[str, Any]] = []
         else:
             if not spec:
                 print(
                     "Error: services specification is required when "
-                    "not using --clear"
+                    "not using --clear",
                 )
                 return 2
             body = _parse_services_spec(spec)
@@ -469,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -490,7 +494,9 @@ def main(argv: List[str] | None = None) -> int:
         return action_show_host_resources(args.use_api, port_for_api)
     if args.action == "update_services":
         return action_update_services(
-            port_for_api, args.clear, args.services_spec
+            port_for_api,
+            args.clear,
+            args.services_spec,
         )
     if args.action == "status":
         return action_status()

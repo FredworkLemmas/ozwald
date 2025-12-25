@@ -14,7 +14,7 @@ Guiding principles
 ------------------
 - Developer focus: simple defaults, clear errors, sensible abstractions.
 - Pragmatic UX: CLIs and APIs that match how people really work day to day.
-- Operability first: profiling, resource checks, and safe failure modes.
+- Operability first: footprinting, resource checks, and safe failure modes.
 - Open building blocks: no lock-in, reuse standard container tooling.
 - Security by design: secrets, isolation, and least privilege from the start.
 - Observability: logs, metrics, and traces embedded into workflows.

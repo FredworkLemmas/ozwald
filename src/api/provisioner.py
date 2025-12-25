@@ -1,22 +1,23 @@
-"""
-FastAPI application for the Ozwald Provisioner service.
+"""FastAPI application for the Ozwald Provisioner service.
 
 This API allows an orchestrator to control which services are provisioned
 and provides information about available resources.
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import uuid
 from datetime import datetime
-from typing import List
+from typing import Annotated, List
 
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from hosts.resources import HostResources
 from orchestration.models import (
-    ProfilerAction,
+    FootprintAction,
     Resource,
     Service,
     ServiceDefinition,
@@ -24,7 +25,7 @@ from orchestration.models import (
 )
 from orchestration.provisioner import SystemProvisioner
 from util.active_services_cache import ActiveServicesCache
-from util.profiler_request_cache import ProfilerRequestCache
+from util.footprint_request_cache import FootprintRequestCache
 
 # Security setup
 # Use auto_error=False so that missing Authorization headers don't short-circuit
@@ -34,10 +35,12 @@ security = HTTPBearer(auto_error=False)
 
 
 def verify_system_key(
-    credentials: HTTPAuthorizationCredentials | None = Security(security),
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(security),
+    ] = None,
 ) -> bool:
-    """
-    Verify the OZWALD_SYSTEM_KEY bearer token.
+    """Verify the OZWALD_SYSTEM_KEY bearer token.
 
     Args:
         credentials: The HTTP authorization credentials
@@ -47,6 +50,7 @@ def verify_system_key(
 
     Raises:
         HTTPException: If authentication fails
+
     """
     expected_key = os.environ.get("OZWALD_SYSTEM_KEY")
 
@@ -89,10 +93,8 @@ sys.modules.setdefault("src.api.provisioner", sys.modules[__name__])
 )
 async def get_configured_services(
     authenticated: bool = Depends(verify_system_key),
-) -> List[ServiceDefinition]:
-    """
-    Returns all services configured for this provisioner.
-    """
+) -> list[ServiceDefinition]:
+    """Returns all services configured for this provisioner."""
     provisioner = SystemProvisioner.singleton()
     return provisioner.get_configured_services()
 
@@ -107,9 +109,8 @@ async def get_configured_services(
 )
 async def get_active_services(
     authenticated: bool = Depends(verify_system_key),
-) -> List[Service]:
-    """
-    Returns all services that are currently active or being
+) -> list[Service]:
+    """Returns all services that are currently active or being
     activated/deactivated.
     """
     provisioner = SystemProvisioner.singleton()
@@ -123,11 +124,10 @@ async def get_active_services(
     description="Activate and deactivate services",
 )
 async def update_services(
-    service_updates: List[ServiceInformation],
+    service_updates: list[ServiceInformation],
     authenticated: bool = Depends(verify_system_key),
 ) -> dict:
-    """
-    Update the active services based on the provided list.
+    """Update the active services based on the provided list.
 
     Services in the list will be activated (or remain active).
     Services not in the list but currently active will be deactivated.
@@ -137,6 +137,7 @@ async def update_services(
 
     Returns:
         Acceptance confirmation
+
     """
     provisioner = SystemProvisioner.singleton()
     try:
@@ -144,14 +145,15 @@ async def update_services(
     except ValueError as e:
         # Raised when a referenced service definition does not exist
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except Exception as e:
         # Unexpected failure while attempting to update
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update services: {e}",
-        )
+        ) from e
 
     if not updated:
         # Provisioner couldn't persist update to cache
@@ -172,7 +174,7 @@ async def update_services(
     description="Alias for /srv/services/active/update/",
 )
 async def update_services_legacy(
-    service_updates: List[ServiceInformation],
+    service_updates: list[ServiceInformation],
     authenticated: bool = Depends(verify_system_key),
 ) -> dict:
     # type: ignore[arg-type]
@@ -190,9 +192,8 @@ async def update_services_legacy(
 )
 async def get_available_resources(
     authenticated: bool = Depends(verify_system_key),
-) -> List[Resource]:
-    """
-    Returns currently available resources on this provisioner's host.
+) -> list[Resource]:
+    """Returns currently available resources on this provisioner's host.
 
     This endpoint is primarily for troubleshooting. In normal operation,
     a provisioner will notify an orchestrator when resources change.
@@ -210,8 +211,7 @@ async def get_available_resources(
 async def get_host_resources(
     authenticated: bool = Depends(verify_system_key),
 ) -> HostResources:
-    """
-    Returns detailed host resource information including CPU, RAM, GPU,
+    """Returns detailed host resource information including CPU, RAM, GPU,
     and VRAM.
     """
     return HostResources.inspect_host()
@@ -220,42 +220,41 @@ async def get_host_resources(
 # Health check endpoint (no authentication required)
 @app.get("/health", summary="Health check")
 async def health_check() -> dict:
-    """
-    Simple health check endpoint to verify the service is running.
-    """
+    """Simple health check endpoint to verify the service is running."""
     return {"status": "healthy"}
 
 
 # ---------------------------------------------------------------------------
-# Profiling API
+# Footprinting API
 # ---------------------------------------------------------------------------
 
 
 @app.get(
-    "/srv/services/profile",
-    response_model=List[ProfilerAction],
-    summary="Get pending profiling requests",
-    description="List all pending profiler requests in the cache",
+    "/srv/services/footprint",
+    response_model=List[FootprintAction],
+    summary="Get pending footprinting requests",
+    description="List all pending footprint requests in the cache",
 )
-async def get_profiler_requests(
+async def get_footprint_requests(
     authenticated: bool = Depends(verify_system_key),
-) -> List[ProfilerAction]:
+) -> list[FootprintAction]:
     provisioner = SystemProvisioner.singleton()
-    profiler_cache = ProfilerRequestCache(provisioner.get_cache())
-    return profiler_cache.get_requests()
+    footprint_cache = FootprintRequestCache(provisioner.get_cache())
+    return footprint_cache.get_requests()
 
 
 @app.post(
-    "/srv/services/profile",
+    "/srv/services/footprint",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Queue a profiling request",
+    summary="Queue a footprinting request",
     description=(
-        "Queue a profiling action. The system must be unloaded (no active "
+        "Queue a footprinting action. The system must be unloaded (no active "
         "services) or the request will be rejected."
     ),
 )
-async def post_profiler_request(
-    action: ProfilerAction, authenticated: bool = Depends(verify_system_key)
+async def post_footprint_request(
+    action: FootprintAction,
+    authenticated: bool = Depends(verify_system_key),
 ) -> dict:
     provisioner = SystemProvisioner.singleton()
 
@@ -264,21 +263,23 @@ async def post_profiler_request(
     if active_cache.get_services():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Profiling requires an unloaded system (no active services)",
+            detail=(
+                "Footprinting requires an unloaded system (no active services)"
+            ),
         )
 
     # Prepare action metadata
     action.requested_at = datetime.now()
     action.request_id = action.request_id or uuid.uuid4().hex
 
-    profiler_cache = ProfilerRequestCache(provisioner.get_cache())
+    footprint_cache = FootprintRequestCache(provisioner.get_cache())
     try:
-        profiler_cache.add_profile_request(action)
+        footprint_cache.add_footprint_request(action)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to queue profiling request: {e}",
-        )
+            detail=f"Failed to queue footprinting request: {e}",
+        ) from e
 
     return {"status": "accepted", "request_id": action.request_id}
 
@@ -291,7 +292,7 @@ if __name__ == "__main__":
         # Provide a clear error if uvicorn isn't installed when running directly
         raise SystemExit(
             "uvicorn is required to run the provisioner API as a module. "
-            "Install it with `pip install uvicorn[standard]`."
+            "Install it with `pip install uvicorn[standard]`.",
         ) from exc
 
     host = os.environ.get("PROVISIONER_HOST", "127.0.0.1")

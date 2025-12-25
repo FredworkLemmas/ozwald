@@ -65,9 +65,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_cpu_info(self, mock_psutil):
         """Test CPU information is correctly retrieved."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -79,9 +83,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_memory_info(self, mock_psutil):
         """Test memory information is correctly retrieved."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -92,9 +100,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_no_gpus(self, mock_psutil):
         """Test behavior when no GPUs are available."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -105,7 +117,10 @@ class TestHostResourcesInspectHost:
             assert result.gpus == []
 
     def test_inspect_host_with_nvidia_gpus(
-        self, mock_psutil, mock_nvidia_available, mock_pynvml
+        self,
+        mock_psutil,
+        mock_nvidia_available,
+        mock_pynvml,
     ):
         """Test NVIDIA GPU information is correctly retrieved."""
         nvidia_gpus = [
@@ -134,16 +149,20 @@ class TestHostResourcesInspectHost:
             "_get_nvidia_gpu_info",
             return_value=(nvidia_gpus, 24.0, 16.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
             assert result.total_gpus == 2
             assert result.total_vram_gb == pytest.approx(
-                24.0, rel=0.01
+                24.0,
+                rel=0.01,
             )  # 8 + 16 GB
             assert result.available_vram_gb == pytest.approx(
-                16.0, rel=0.01
+                16.0,
+                rel=0.01,
             )  # 4 + 12 GB
             assert result.available_gpus == [0, 1]  # Both under 90% utilization
             assert len(result.gpus) == 2
@@ -154,7 +173,10 @@ class TestHostResourcesInspectHost:
             assert result.gpus[0].pci_device_description == "0000:01:00.0"
 
     def test_inspect_host_with_amd_gpus(
-        self, mock_psutil, mock_amd_available, mock_amdsmi
+        self,
+        mock_psutil,
+        mock_amd_available,
+        mock_amdsmi,
     ):
         """Test AMD GPU information is correctly retrieved."""
         amd_gpus = [
@@ -179,7 +201,9 @@ class TestHostResourcesInspectHost:
         ]
 
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
             HostResources,
             "_get_amd_gpu_info",
@@ -189,10 +213,12 @@ class TestHostResourcesInspectHost:
 
             assert result.total_gpus == 2
             assert result.total_vram_gb == pytest.approx(
-                24.0, rel=0.01
+                24.0,
+                rel=0.01,
             )  # 8 + 16 GB
             assert result.available_vram_gb == pytest.approx(
-                18.0, rel=0.01
+                18.0,
+                rel=0.01,
             )  # (8-2) + (16-4) GB
             assert result.available_gpus == [0, 1]  # Both under 90% utilization
             assert len(result.gpus) == 2
@@ -217,7 +243,7 @@ class TestHostResourcesInspectHost:
                 "vendor": "nvidia",
                 "description": "NVIDIA GeForce RTX 3080",
                 "pci_device_description": "0000:01:00.0",
-            }
+            },
         ]
         amd_gpus = [
             {
@@ -228,7 +254,7 @@ class TestHostResourcesInspectHost:
                 "vendor": "amd",
                 "description": "AMD Radeon RX 7900 XTX",
                 "pci_device_description": "0000:04:00.0",
-            }
+            },
         ]
 
         with patch.object(
@@ -244,15 +270,20 @@ class TestHostResourcesInspectHost:
 
             assert result.total_gpus == 2
             assert result.total_vram_gb == pytest.approx(
-                24.0, rel=0.01
+                24.0,
+                rel=0.01,
             )  # 8 + 16 GB
             assert result.available_vram_gb == pytest.approx(
-                18.0, rel=0.01
+                18.0,
+                rel=0.01,
             )  # 6 + 12 GB
             assert len(result.gpus) == 2
 
     def test_inspect_host_high_gpu_utilization(
-        self, mock_psutil, mock_nvidia_available, mock_pynvml
+        self,
+        mock_psutil,
+        mock_nvidia_available,
+        mock_pynvml,
     ):
         """Test that GPUs with high utilization are not marked as available."""
         nvidia_gpus = [
@@ -264,7 +295,7 @@ class TestHostResourcesInspectHost:
                 "vendor": "nvidia",
                 "description": "NVIDIA GeForce RTX 3080",
                 "pci_device_description": "0000:01:00.0",
-            }
+            },
         ]
 
         with patch.object(
@@ -272,7 +303,9 @@ class TestHostResourcesInspectHost:
             "_get_nvidia_gpu_info",
             return_value=(nvidia_gpus, 8.0, 0.5),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -286,9 +319,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_nvidia_exception_handling(self, mock_psutil):
         """Test graceful handling when NVIDIA GPU detection fails."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -306,9 +343,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_amd_exception_handling(self, mock_psutil):
         """Test graceful handling when AMD GPU detection fails."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -322,8 +363,7 @@ class TestHostResourcesInspectHost:
             assert result.total_ram_gb == 16.0
 
     def test_inspect_host_amd_partial_device_failure(self, mock_psutil):
-        """
-        Test that AMD code skips devices that fail but continues with
+        """Test that AMD code skips devices that fail but continues with
         others.
         """
         amd_gpus = [
@@ -335,11 +375,13 @@ class TestHostResourcesInspectHost:
                 "vendor": "amd",
                 "description": "AMD Radeon RX 7900 XTX",
                 "pci_device_description": "0000:04:00.0",
-            }
+            },
         ]
 
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
             HostResources,
             "_get_amd_gpu_info",
@@ -354,9 +396,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_high_cpu_usage(self, mock_psutil):
         """Test CPU availability calculation with high usage."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             mock_psutil.cpu_percent.return_value = 90.0
 
@@ -369,9 +415,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_low_memory(self, mock_psutil):
         """Test memory reporting with low available memory."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             mock_memory = MagicMock()
             mock_memory.total = 16 * (1024**3)  # 16 GB
@@ -386,9 +436,13 @@ class TestHostResourcesInspectHost:
     def test_inspect_host_returns_pydantic_model(self, mock_psutil):
         """Test that inspect_host returns a proper HostResources instance."""
         with patch.object(
-            HostResources, "_get_nvidia_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_nvidia_gpu_info",
+            return_value=([], 0.0, 0.0),
         ), patch.object(
-            HostResources, "_get_amd_gpu_info", return_value=([], 0.0, 0.0)
+            HostResources,
+            "_get_amd_gpu_info",
+            return_value=([], 0.0, 0.0),
         ):
             result = HostResources.inspect_host()
 
@@ -476,8 +530,7 @@ class TestInstalledGpuDrivers:
     """Tests for HostResources.installed_gpu_drivers static method."""
 
     def test_installed_gpu_drivers_detects_nvidia_and_amd(self):
-        """
-        Should parse lsmod output and detect both amdgpu and nvidia
+        """Should parse lsmod output and detect both amdgpu and nvidia
         modules.
         """
         lsmod_output = (
@@ -512,7 +565,8 @@ class TestInstalledGpuDrivers:
         """Should gracefully handle lsmod failing and return empty list."""
         with patch("src.hosts.resources.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(
-                returncode=1, cmd=["lsmod"]
+                returncode=1,
+                cmd=["lsmod"],
             )
             drivers = HostResources.installed_gpu_drivers()
 

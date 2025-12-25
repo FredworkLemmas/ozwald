@@ -74,7 +74,7 @@ class BaseProvisionableService(Service):
         service_def = config_reader.get_service_by_name(si.service)
         if service_def is None:
             raise RuntimeError(
-                f"Service definition for service {si.service} not found"
+                f"Service definition for service {si.service} not found",
             )
         return service_def
 
@@ -82,10 +82,10 @@ class BaseProvisionableService(Service):
 
     @classmethod
     def _lookup_service(
-        cls, service_type: str
+        cls,
+        service_type: str,
     ) -> Optional[Type["BaseProvisionableService"]]:
-        """
-        Return a service class from the `services` module that:
+        """Return a service class from the `services` module that:
         - Inherits from BaseProvisionableService
         - Has a class attribute `service_type` matching the argument
 
@@ -111,24 +111,27 @@ class BaseProvisionableService(Service):
         try:
             import services as services_pkg  # local package
         except Exception as e:
-            logger.error(f"Failed to import services package: {e}")
+            logger.error("Failed to import services package: %s", e)
             return registry
 
         # Import all submodules under services package once
         try:
             package_walk = pkgutil.walk_packages(
-                services_pkg.__path__, services_pkg.__name__ + "."
+                services_pkg.__path__,
+                services_pkg.__name__ + ".",
             )
             for _finder, name, _ispkg in package_walk:
                 try:
                     importlib.import_module(name)
                 except Exception as e:
                     logger.warning(
-                        f"Could not import services submodule '{name}': {e}"
+                        "Could not import services submodule '%s': %s",
+                        name,
+                        e,
                     )
                     continue
         except Exception as e:
-            logger.warning(f"Error while scanning services package: {e}")
+            logger.warning("Error while scanning services package: %s", e)
 
         # After importing, inspect loaded modules under services.*
         for mod_name, module in list(sys.modules.items()):
@@ -141,7 +144,7 @@ class BaseProvisionableService(Service):
                     # Ensure it's defined in the services package
                     # (not an import alias)
                     if not getattr(obj, "__module__", "").startswith(
-                        "services"
+                        "services",
                     ):
                         continue
                     if not issubclass(obj, cls) or obj is cls:
@@ -161,23 +164,24 @@ class BaseProvisionableService(Service):
                                     "already registered to "
                                     f"{registry[st].__module__}."
                                     f"{registry[st].__name__}. Ignoring."
-                                )
+                                ),
                             )
                         continue
                     registry[st] = obj
             except Exception as e:
                 logger.debug(
-                    "Skipping module "
-                    f"{mod_name} during registry build due to error: {e}"
+                    "Skipping module %s during registry build due to error: %s",
+                    mod_name,
+                    e,
                 )
 
         if not registry:
             logger.warning(
-                "No provisionable services found under the services package."
+                "No provisionable services found under the services package.",
             )
         else:
             logger.info(
                 "Service registry initialized with "
-                f"{len(registry)} entries: {sorted(registry.keys())}"
+                f"{len(registry)} entries: {sorted(registry.keys())}",
             )
         return registry

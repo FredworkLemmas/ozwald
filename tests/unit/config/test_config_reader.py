@@ -18,8 +18,7 @@ class TestConfigReaderInitialization:
     """Tests for ConfigReader initialization and file loading."""
 
     def test_init_with_valid_config_file(self, sample_config_file):
-        """
-        Verify that ConfigReader successfully initializes with a valid
+        """Verify that ConfigReader successfully initializes with a valid
         configuration file and populates all expected attributes.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -30,8 +29,7 @@ class TestConfigReaderInitialization:
         assert reader.provisioners is not None
 
     def test_init_with_minimal_config(self, minimal_config_file):
-        """
-        Verify that ConfigReader can handle minimal valid configuration
+        """Verify that ConfigReader can handle minimal valid configuration
         with empty lists for hosts, services, and provisioners.
         """
         reader = ConfigReader(str(minimal_config_file))
@@ -41,8 +39,7 @@ class TestConfigReaderInitialization:
         assert len(reader.provisioners) == 0
 
     def test_init_with_nonexistent_file(self, tmp_path):
-        """
-        Verify that ConfigReader raises FileNotFoundError when
+        """Verify that ConfigReader raises FileNotFoundError when
         initialized with a path to a non-existent file.
         """
         nonexistent_file = tmp_path / "does_not_exist.yml"
@@ -53,18 +50,17 @@ class TestConfigReaderInitialization:
         assert "Configuration file not found" in str(exc_info.value)
 
     def test_init_with_empty_file(self, empty_config_file):
-        """
-        Verify that ConfigReader raises ValueError when initialized
+        """Verify that ConfigReader raises ValueError when initialized
         with an empty YAML file.
         """
         with pytest.raises(
-            ValueError, match=r"Empty or invalid YAML configuration"
+            ValueError,
+            match=r"Empty or invalid YAML configuration",
         ):
             ConfigReader(str(empty_config_file))
 
     def test_init_with_invalid_yaml(self, invalid_yaml_file):
-        """
-        Verify that ConfigReader raises an exception when initialized
+        """Verify that ConfigReader raises an exception when initialized
         with a file containing invalid YAML syntax.
         """
         with pytest.raises(yaml.YAMLError):
@@ -82,8 +78,7 @@ class TestHostParsing:
     """Tests for parsing host configurations."""
 
     def test_hosts_are_parsed(self, sample_config_file):
-        """
-        Verify that all hosts from the configuration are parsed
+        """Verify that all hosts from the configuration are parsed
         and converted to Host model instances.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -93,8 +88,7 @@ class TestHostParsing:
         assert all(isinstance(host, Host) for host in reader.hosts)
 
     def test_host_attributes(self, sample_config_file):
-        """
-        Verify that host attributes (name, ip) are correctly
+        """Verify that host attributes (name, ip) are correctly
         parsed from the configuration.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -108,8 +102,7 @@ class TestHostParsing:
         assert bitty.ip == "192.168.0.254"
 
     def test_host_resources_are_parsed(self, sample_config_file):
-        """
-        Verify that resources for each host are correctly parsed including
+        """Verify that resources for each host are correctly parsed including
         name, type, unit, value, related_resources, and
         extended_attributes.
         """
@@ -147,11 +140,11 @@ class TestHostParsing:
         assert memory_resource.related_resources is None
 
     def test_host_resources_without_extended_attributes(
-        self, sample_config_file
+        self,
+        sample_config_file,
     ):
-        """
-        Verify that resources without extended_attributes (like VRAM or memory)
-        are correctly parsed with extended_attributes set to None.
+        """Verify that resources without extended_attributes (like VRAM
+        or memory) are correctly parsed with extended_attributes set to None.
         """
         reader = ConfigReader(str(sample_config_file))
 
@@ -163,8 +156,8 @@ class TestHostParsing:
         assert memory_resource.extended_attributes is None
 
     def test_resource_relationships(self, sample_config_file):
-        """
-        Verify that related_resources correctly link GPU and VRAM resources.
+        """Verify that related_resources correctly link GPU and VRAM
+        resources.
         """
         reader = ConfigReader(str(sample_config_file))
 
@@ -179,8 +172,7 @@ class TestHostParsing:
         assert "gpu-0" in vram_0.related_resources
 
     def test_multiple_gpus_with_vram(self, sample_config_file):
-        """
-        Verify that hosts with multiple GPUs have correct resources
+        """Verify that hosts with multiple GPUs have correct resources
         and relationships for each GPU-VRAM pair.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -208,8 +200,7 @@ class TestServiceParsing:
     """Tests for parsing service definition configurations."""
 
     def test_services_are_parsed(self, sample_config_file):
-        """
-        Verify that all service definitions are parsed and converted
+        """Verify that all service definitions are parsed and converted
         to ServiceDefinition model instances.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -220,8 +211,7 @@ class TestServiceParsing:
         )
 
     def test_service_attributes(self, sample_config_file):
-        """
-        Verify that service attributes (service_name, type, description,
+        """Verify that service attributes (service_name, type, description,
         environment, varieties) are correctly parsed.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -256,8 +246,7 @@ class TestServiceParsing:
         )
 
     def test_service_profiles_are_parsed(self, sample_config_file):
-        """
-        Verify that service profiles with their environment are
+        """Verify that service profiles with their environment are
         correctly parsed and associated with services.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -274,11 +263,12 @@ class TestServiceParsing:
         assert embed_profile.environment["MAX_MODEL_LEN"] == 1100
 
     def test_profile_inherits_and_overrides_base_environment(
-        self, tmp_path, sample_config_dict
+        self,
+        tmp_path,
+        sample_config_dict,
     ):
-        """
-        Verify that a profile's environment inherits keys from the base service
-        environment and overrides conflicting keys.
+        """Verify that a profile's environment inherits keys from the base
+        service environment and overrides conflicting keys.
         Base < Profile precedence for environment.
         """
         # Arrange: clone sample config and add an override for MODEL_NAME in
@@ -313,10 +303,11 @@ class TestServiceParsing:
         assert "GPU_MEMORY_UTILIZATION" in embed_profile.environment
 
     def test_variety_overrides_base_but_profile_overrides_variety(
-        self, tmp_path, sample_config_dict
+        self,
+        tmp_path,
+        sample_config_dict,
     ):
-        """
-        Verify precedence order for environment values: base < variety <
+        """Verify precedence order for environment values: base < variety <
         profile.
         """
         cfg = sample_config_dict
@@ -355,9 +346,7 @@ class TestServiceParsing:
         assert embed.environment["FOO"] == "profile"
 
     def test_service_without_profiles(self, sample_config_file):
-        """
-        Verify that services without profiles have an empty profiles list.
-        """
+        """Verify that services without profiles have an empty profiles list."""
         reader = ConfigReader(str(sample_config_file))
 
         chunker_service = next(
@@ -379,7 +368,8 @@ class TestProvisionersParsing:
         assert names == ["bitty", "jamma"]
 
     def test_provisioner_without_cache(
-        self, config_with_provisioner_without_cache_file
+        self,
+        config_with_provisioner_without_cache_file,
     ):
         reader = ConfigReader(str(config_with_provisioner_without_cache_file))
         assert len(reader.provisioners) == 1
@@ -397,8 +387,7 @@ class TestUtilityMethods:
     """Tests for ConfigReader utility/lookup methods."""
 
     def test_get_host_by_name_found(self, sample_config_file):
-        """
-        Verify that get_host_by_name returns the correct Host
+        """Verify that get_host_by_name returns the correct Host
         when a matching name is found.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -409,8 +398,7 @@ class TestUtilityMethods:
         assert host.ip == "192.168.0.211"
 
     def test_get_host_by_name_not_found(self, sample_config_file):
-        """
-        Verify that get_host_by_name returns None when
+        """Verify that get_host_by_name returns None when
         no matching host is found.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -419,8 +407,7 @@ class TestUtilityMethods:
         assert host is None
 
     def test_get_service_by_name_found(self, sample_config_file):
-        """
-        Verify that get_service_by_name returns the correct ServiceDefinition
+        """Verify that get_service_by_name returns the correct ServiceDefinition
         when a matching service_name is found.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -431,8 +418,7 @@ class TestUtilityMethods:
         assert service.type == "container"
 
     def test_get_service_by_name_not_found(self, sample_config_file):
-        """
-        Verify that get_service_by_name returns None when
+        """Verify that get_service_by_name returns None when
         no matching service is found.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -452,8 +438,7 @@ class TestIntegration:
     """Integration tests for ConfigReader with complete workflows."""
 
     def test_full_configuration_parsing(self, sample_config_file):
-        """
-        Integration test: Verify that a complete configuration file
+        """Integration test: Verify that a complete configuration file
         is parsed correctly with all sections populated.
         """
         reader = ConfigReader(str(sample_config_file))
@@ -464,8 +449,7 @@ class TestIntegration:
         assert len(reader.provisioners) > 0
 
     def test_pathlib_path_initialization(self, sample_config_file):
-        """
-        Verify that ConfigReader accepts both string and Path objects
+        """Verify that ConfigReader accepts both string and Path objects
         for initialization.
         """
         reader_from_str = ConfigReader(str(sample_config_file))
@@ -497,10 +481,10 @@ class TestVolumesInProfilesVarieties:
                             "name": "v1",
                             "target": "/t1",
                             "read_only": True,
-                        }
+                        },
                     ],
                     "varieties": {
-                        "A": {"volumes": [{"name": "v2", "target": "/t2"}]}
+                        "A": {"volumes": [{"name": "v2", "target": "/t2"}]},
                     },
                     "profiles": {
                         "P": {
@@ -509,11 +493,11 @@ class TestVolumesInProfilesVarieties:
                                     "name": "v1",
                                     "target": "/t1",
                                     "read_only": False,
-                                }
-                            ]
-                        }
+                                },
+                            ],
+                        },
                     },
-                }
+                },
             ],
             "provisioners": [],
             "volumes": {

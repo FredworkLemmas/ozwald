@@ -22,7 +22,8 @@ def mock_redis():
 def cache_model():
     """Create a Cache model for testing."""
     return Cache(
-        type="redis", parameters={"host": "localhost", "port": 6379, "db": 0}
+        type="redis",
+        parameters={"host": "localhost", "port": 6379, "db": 0},
     )
 
 

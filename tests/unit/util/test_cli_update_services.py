@@ -32,7 +32,8 @@ class TestCliUpdateServices:
         resp202.raise_for_status = lambda: None
 
         http_post = mocker.patch(
-            "util.cli.http_post", side_effect=[resp404, resp202]
+            "util.cli.http_post",
+            side_effect=[resp404, resp202],
         )
 
         out = ucli.update_services(port=8123, body=[{"x": 1}])

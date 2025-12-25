@@ -1,3 +1,1 @@
-"""
-the library module provides data to the context builders.
-"""
+"""the library module provides data to the context builders."""

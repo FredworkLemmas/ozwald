@@ -13,6 +13,7 @@ def build(c, clean=True, sdist=True, wheel=True):
         clean: remove the dist/ directory before building
         sdist: include source distribution in the build
         wheel: include wheel in the build
+
     """
     if clean:
         c.run("rm -rf dist", warn=True)
@@ -49,7 +50,7 @@ def _select_token(use_testpypi: bool) -> str:
     if not token:
         target = "TestPyPI" if use_testpypi else "PyPI"
         raise RuntimeError(
-            f"Missing {key} in environment for {target} publication"
+            f"Missing {key} in environment for {target} publication",
         )
     return token
 
@@ -65,6 +66,7 @@ def release(
     Args:
         use_testpypi: if True, publish to TestPyPI instead of PyPI.
         do_build: if True, run "uv build" before publishing.
+
     """
     _perform_release(c, use_testpypi=use_testpypi, do_build=do_build)
 

@@ -16,12 +16,12 @@ load_dotenv()
 
 def _load_settings() -> dict:
     settings_path = os.environ.get("DEFAULT_OZWALD_CONFIG") or os.environ.get(
-        "OZWALD_CONFIG"
+        "OZWALD_CONFIG",
     )
     if not settings_path:
         raise RuntimeError(
             "DEFAULT_OZWALD_CONFIG (or OZWALD_CONFIG) must point to the "
-            "settings YAML for integration tests"
+            "settings YAML for integration tests",
         )
     p = Path(settings_path)
     if not p.exists():
@@ -34,7 +34,7 @@ def _get_cache_params(cfg: dict) -> tuple[str, int, int, str | None]:
     name = os.environ.get("OZWALD_PROVISIONER")
     if not name:
         raise RuntimeError(
-            "OZWALD_PROVISIONER must select a provisioner in the config"
+            "OZWALD_PROVISIONER must select a provisioner in the config",
         )
     provs = cfg.get("provisioners", [])
     for prov in provs:
@@ -53,7 +53,11 @@ def _clear_redis_each_test():
     cfg = _load_settings()
     host, port, db, password = _get_cache_params(cfg)
     client = redis.Redis(
-        host=host, port=port, db=db, password=password, decode_responses=True
+        host=host,
+        port=port,
+        db=db,
+        password=password,
+        decode_responses=True,
     )
     client.flushdb()
     try:
@@ -74,7 +78,11 @@ def _auth_headers() -> dict:
 
 def _active_services_snapshot(host: str, port: int, db: int, password=None):
     client = redis.Redis(
-        host=host, port=port, db=db, password=password, decode_responses=True
+        host=host,
+        port=port,
+        db=db,
+        password=password,
+        decode_responses=True,
     )
     data = client.get("active_services")
     if not data:
@@ -110,6 +118,7 @@ def _container_running(name: str) -> bool:
             "--format",
             "{{.Names}}",
         ],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -130,6 +139,7 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
         return
     check = subprocess.run(
         ["docker", "image", "inspect", image],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -137,12 +147,13 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
         return
     build = subprocess.run(
         ["docker", "build", "-t", image, "-f", dockerfile_path, "."],
+        check=False,
         capture_output=True,
         text=True,
     )
     if build.returncode != 0:
         raise RuntimeError(
-            f"Failed to build image {image}: {build.stderr or build.stdout}"
+            f"Failed to build image {image}: {build.stderr or build.stdout}",
         )
 
 
@@ -218,8 +229,10 @@ class TestStopAllViaEndpoint:
         if _docker_available():
             # Containers may take a moment to stop; wait up to 60s
             assert _wait_for(
-                lambda: not _container_running(container_a), timeout=60.0
+                lambda: not _container_running(container_a),
+                timeout=60.0,
             )
             assert _wait_for(
-                lambda: not _container_running(container_b), timeout=60.0
+                lambda: not _container_running(container_b),
+                timeout=60.0,
             )

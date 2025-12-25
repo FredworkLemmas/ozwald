@@ -52,14 +52,17 @@ def _svc_info(
     profile: str = "default",
 ) -> ServiceInformation:
     return ServiceInformation(
-        name=name, service=service_name, profile=profile, status=status, info={}
+        name=name,
+        service=service_name,
+        profile=profile,
+        status=status,
+        info={},
     )
 
 
 @pytest.fixture
 def provisioner_env(monkeypatch):
-    """
-    Patch orchestration.provisioner dependencies for isolated daemon
+    """Patch orchestration.provisioner dependencies for isolated daemon
     tests.
     """
     import orchestration.provisioner as prov_mod
@@ -67,7 +70,9 @@ def provisioner_env(monkeypatch):
 
     # Replace the ActiveServicesCache used by SystemProvisioner with our fake
     monkeypatch.setattr(
-        prov_mod, "ActiveServicesCache", FakeActiveServicesCache
+        prov_mod,
+        "ActiveServicesCache",
+        FakeActiveServicesCache,
     )
 
     # Install a tiny sleep at the end of loop that aborts the daemon after
@@ -76,9 +81,8 @@ def provisioner_env(monkeypatch):
         # Only abort on the bottom-of-loop sleep which uses
         # BACKEND_DAEMON_SLEEP_TIME
         if seconds == prov_mod.BACKEND_DAEMON_SLEEP_TIME:
-            raise StopLoop()
+            raise StopLoop
         # For other sleeps (e.g., retry 0.5s), do nothing to keep tests fast
-        return
 
     monkeypatch.setattr(prov_mod.time, "sleep", sleep_patch)
 
@@ -113,7 +117,8 @@ def provisioner_env(monkeypatch):
 
 
 def test_daemon_start_flow_sets_timestamps_and_persists(
-    monkeypatch, provisioner_env
+    monkeypatch,
+    provisioner_env,
 ):
     prov_mod, prov, fake_cache = provisioner_env
 
@@ -167,7 +172,8 @@ def test_daemon_start_flow_sets_timestamps_and_persists(
 
 
 def test_daemon_ignores_duplicate_start_within_timeout(
-    monkeypatch, provisioner_env
+    monkeypatch,
+    provisioner_env,
 ):
     prov_mod, prov, fake_cache = provisioner_env
 
@@ -180,7 +186,7 @@ def test_daemon_ignores_duplicate_start_within_timeout(
     # Make lookup raise if called, to ensure it's not invoked
     def fail_lookup(_: str):
         raise AssertionError(
-            "lookup should not be called for duplicate start within timeout"
+            "lookup should not be called for duplicate start within timeout",
         )
 
     monkeypatch.setattr(
@@ -199,7 +205,8 @@ def test_daemon_ignores_duplicate_start_within_timeout(
 
 
 def test_daemon_stop_flow_sets_timestamps_and_persists(
-    monkeypatch, provisioner_env
+    monkeypatch,
+    provisioner_env,
 ):
     prov_mod, prov, fake_cache = provisioner_env
 
@@ -236,7 +243,8 @@ def test_daemon_stop_flow_sets_timestamps_and_persists(
 
 
 def test_daemon_ignores_duplicate_stop_within_timeout(
-    monkeypatch, provisioner_env
+    monkeypatch,
+    provisioner_env,
 ):
     prov_mod, prov, fake_cache = provisioner_env
 
@@ -247,7 +255,7 @@ def test_daemon_ignores_duplicate_stop_within_timeout(
 
     def fail_lookup(_: str):
         raise AssertionError(
-            "lookup should not be called for duplicate stop within timeout"
+            "lookup should not be called for duplicate stop within timeout",
         )
 
     monkeypatch.setattr(
@@ -265,7 +273,8 @@ def test_daemon_ignores_duplicate_stop_within_timeout(
 
 
 def test_daemon_persists_with_retry_on_write_collision(
-    monkeypatch, provisioner_env
+    monkeypatch,
+    provisioner_env,
 ):
     prov_mod, prov, fake_cache = provisioner_env
 
@@ -302,7 +311,8 @@ def test_daemon_persists_with_retry_on_write_collision(
 
 class TestUpdateServicesBehaviorEmptyList:
     def test_empty_list_marks_all_active_as_stopping_and_persists(
-        self, provisioner_env
+        self,
+        provisioner_env,
     ):
         _prov_mod, prov, fake_cache = provisioner_env
 
@@ -319,7 +329,8 @@ class TestUpdateServicesBehaviorEmptyList:
         assert all(s.status == ServiceStatus.STOPPING for s in persisted)
 
     def test_empty_list_with_no_active_services_persists_empty_list(
-        self, provisioner_env
+        self,
+        provisioner_env,
     ):
         _prov_mod, prov, fake_cache = provisioner_env
 

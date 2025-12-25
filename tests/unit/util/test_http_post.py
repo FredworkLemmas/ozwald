@@ -3,7 +3,7 @@ import types
 
 class TestHttpPost:
     def test_post_uses_default_timeout(self, mocker):
-        import util.http as http
+        from util import http
 
         called = {}
 
