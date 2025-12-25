@@ -102,6 +102,165 @@ class SystemProvisioner:
                 logger.error("Failed to prepare NFS mounts: %s", e)
         return _system_provisioner
 
+    def get_configured_services(self) -> List[ServiceDefinition]:
+        """Get all services configured for this provisioner"""
+        return self.config_reader.services
+
+    def get_active_services(self) -> List[Service]:
+        """Get all currently active services"""
+        if self._active_services_cache:
+            return self._active_services_cache.get_services()
+        return []
+
+    def update_services(
+        self, service_updates: List[ServiceInformation]
+    ) -> bool:
+        """
+        Update active services based on provided service information.
+        This initiates activation/deactivation of services.
+
+        Returns:
+            True if services were successfully updated, False otherwise.
+        """
+        if not self._active_services_cache:
+            return False
+
+        # Get current active services from cache
+        active_service_info_objects = self._active_services_cache.get_services()
+
+        # Create a set of requested service names
+        requested_services = {si.name for si in service_updates}
+
+        # Stop services if they're not in the requested list
+        services_to_remove = [
+            svc
+            for svc in active_service_info_objects
+            if svc.name not in requested_services
+        ]
+        for svc in services_to_remove:
+            svc.status = ServiceStatus.STOPPING
+
+        # Add or update services
+        for service_info in service_updates:
+            existing = next(
+                (
+                    s
+                    for s in active_service_info_objects
+                    if s.name == service_info.name
+                ),
+                None,
+            )
+
+            if existing:
+                # Update existing service if needed
+                if existing.status == ServiceStatus.STOPPING:
+                    existing.status = ServiceStatus.STARTING
+            else:
+                new_service = self._init_service(service_info)
+                if new_service:
+                    active_service_info_objects.append(new_service)
+
+        # Save updated services to cache with retry logic
+        start_time = time.time()
+        while time.time() - start_time < 2.0:
+            try:
+                self._active_services_cache.set_services(
+                    active_service_info_objects
+                )
+                return True
+            except WriteCollision:
+                time.sleep(0.2)
+
+        logger.error(
+            "Failed to update services: timeout after 2 seconds "
+            "due to write collisions"
+        )
+        return False
+
+    def get_available_resources(self) -> List[Resource]:
+        """Get currently available resources on this host"""
+        host_resources = HostResources.inspect_host()
+
+        resources = []
+
+        # CPU resource
+        resources.append(
+            Resource(
+                name="cpu",
+                type="cpu",
+                unit="cores",
+                value=host_resources.available_cpu_cores,
+                related_resources=None,
+                extended_attributes={"total": host_resources.total_cpu_cores},
+            )
+        )
+
+        # Memory resource
+        resources.append(
+            Resource(
+                name="memory",
+                type="memory",
+                unit="GB",
+                value=host_resources.available_ram_gb,
+                related_resources=None,
+                extended_attributes={"total": host_resources.total_ram_gb},
+            )
+        )
+
+        # VRAM resource
+        if host_resources.total_gpus > 0:
+            resources.append(
+                Resource(
+                    name="vram",
+                    type="vram",
+                    unit="GB",
+                    value=host_resources.available_vram_gb,
+                    related_resources=["gpu"],
+                    extended_attributes={
+                        "total": host_resources.total_vram_gb,
+                        "gpu_details": {
+                            str(gpu_id): {
+                                "total": host_resources.gpuid_to_total_vram.get(
+                                    gpu_id, 0
+                                ),
+                                "available": (
+                                    host_resources.gpuid_to_available_vram.get(
+                                        gpu_id, 0
+                                    )
+                                ),
+                            }
+                            for gpu_id in range(host_resources.total_gpus)
+                        },
+                    },
+                )
+            )
+
+            # GPU resource
+            for gpu_id in range(host_resources.total_gpus):
+                vram_total = host_resources.gpuid_to_total_vram.get(gpu_id, 0)
+                vram_avail = host_resources.gpuid_to_available_vram.get(
+                    gpu_id, 0
+                )
+                is_available = (
+                    1.0 if gpu_id in host_resources.available_gpus else 0.0
+                )
+                resources.append(
+                    Resource(
+                        name=f"gpu_{gpu_id}",
+                        type="gpu",
+                        unit="device",
+                        value=is_available,
+                        related_resources=["vram"],
+                        extended_attributes={
+                            "gpu_id": gpu_id,
+                            "vram_total": vram_total,
+                            "vram_available": vram_avail,
+                        },
+                    )
+                )
+
+        return resources
+
     def run_backend_daemon(self):
         """Run the backend daemon
         - Loops until a termination signal is received
@@ -688,165 +847,6 @@ class SystemProvisioner:
                     os.remove(tmp_path)
         except Exception as e:
             logger.error(f"Failed to write profiler data to '{path}': {e}")
-
-    def get_configured_services(self) -> List[ServiceDefinition]:
-        """Get all services configured for this provisioner"""
-        return self.config_reader.services
-
-    def get_active_services(self) -> List[Service]:
-        """Get all currently active services"""
-        if self._active_services_cache:
-            return self._active_services_cache.get_services()
-        return []
-
-    def update_services(
-        self, service_updates: List[ServiceInformation]
-    ) -> bool:
-        """
-        Update active services based on provided service information.
-        This initiates activation/deactivation of services.
-
-        Returns:
-            True if services were successfully updated, False otherwise.
-        """
-        if not self._active_services_cache:
-            return False
-
-        # Get current active services from cache
-        active_service_info_objects = self._active_services_cache.get_services()
-
-        # Create a set of requested service names
-        requested_services = {si.name for si in service_updates}
-
-        # Stop services if they're not in the requested list
-        services_to_remove = [
-            svc
-            for svc in active_service_info_objects
-            if svc.name not in requested_services
-        ]
-        for svc in services_to_remove:
-            svc.status = ServiceStatus.STOPPING
-
-        # Add or update services
-        for service_info in service_updates:
-            existing = next(
-                (
-                    s
-                    for s in active_service_info_objects
-                    if s.name == service_info.name
-                ),
-                None,
-            )
-
-            if existing:
-                # Update existing service if needed
-                if existing.status == ServiceStatus.STOPPING:
-                    existing.status = ServiceStatus.STARTING
-            else:
-                new_service = self._init_service(service_info)
-                if new_service:
-                    active_service_info_objects.append(new_service)
-
-        # Save updated services to cache with retry logic
-        start_time = time.time()
-        while time.time() - start_time < 2.0:
-            try:
-                self._active_services_cache.set_services(
-                    active_service_info_objects
-                )
-                return True
-            except WriteCollision:
-                time.sleep(0.2)
-
-        logger.error(
-            "Failed to update services: timeout after 2 seconds "
-            "due to write collisions"
-        )
-        return False
-
-    def get_available_resources(self) -> List[Resource]:
-        """Get currently available resources on this host"""
-        host_resources = HostResources.inspect_host()
-
-        resources = []
-
-        # CPU resource
-        resources.append(
-            Resource(
-                name="cpu",
-                type="cpu",
-                unit="cores",
-                value=host_resources.available_cpu_cores,
-                related_resources=None,
-                extended_attributes={"total": host_resources.total_cpu_cores},
-            )
-        )
-
-        # Memory resource
-        resources.append(
-            Resource(
-                name="memory",
-                type="memory",
-                unit="GB",
-                value=host_resources.available_ram_gb,
-                related_resources=None,
-                extended_attributes={"total": host_resources.total_ram_gb},
-            )
-        )
-
-        # VRAM resource
-        if host_resources.total_gpus > 0:
-            resources.append(
-                Resource(
-                    name="vram",
-                    type="vram",
-                    unit="GB",
-                    value=host_resources.available_vram_gb,
-                    related_resources=["gpu"],
-                    extended_attributes={
-                        "total": host_resources.total_vram_gb,
-                        "gpu_details": {
-                            str(gpu_id): {
-                                "total": host_resources.gpuid_to_total_vram.get(
-                                    gpu_id, 0
-                                ),
-                                "available": (
-                                    host_resources.gpuid_to_available_vram.get(
-                                        gpu_id, 0
-                                    )
-                                ),
-                            }
-                            for gpu_id in range(host_resources.total_gpus)
-                        },
-                    },
-                )
-            )
-
-            # GPU resource
-            for gpu_id in range(host_resources.total_gpus):
-                vram_total = host_resources.gpuid_to_total_vram.get(gpu_id, 0)
-                vram_avail = host_resources.gpuid_to_available_vram.get(
-                    gpu_id, 0
-                )
-                is_available = (
-                    1.0 if gpu_id in host_resources.available_gpus else 0.0
-                )
-                resources.append(
-                    Resource(
-                        name=f"gpu_{gpu_id}",
-                        type="gpu",
-                        unit="device",
-                        value=is_available,
-                        related_resources=["vram"],
-                        extended_attributes={
-                            "gpu_id": gpu_id,
-                            "vram_total": vram_total,
-                            "vram_available": vram_avail,
-                        },
-                    )
-                )
-
-        return resources
 
     def _init_service(
         self, service_info: ServiceInformation
