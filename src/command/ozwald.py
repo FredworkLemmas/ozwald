@@ -367,6 +367,7 @@ def _parse_services_spec(spec: str) -> List[Dict[str, Any]]:
 
 
 def action_update_services(port: int, clear: bool, spec: Optional[str]) -> int:
+    print("**** HERE **** ")
     try:
         if clear:
             body: List[Dict[str, Any]] = []
@@ -379,7 +380,11 @@ def action_update_services(port: int, clear: bool, spec: Optional[str]) -> int:
                 return 2
             body = _parse_services_spec(spec)
 
+        print(f"body: {json.dumps(body, indent=2)}")
+
         data = ucli.update_services(port=port, body=body)
+
+        print(f"data: {json.dumps(data, indent=2)}")
         status = data.get("status")
         if status == "accepted":
             print("\n✓ Service update request accepted\n")
@@ -387,7 +392,7 @@ def action_update_services(port: int, clear: bool, spec: Optional[str]) -> int:
         print(f"Unexpected response: {json.dumps(data)}")
         return 2
     except Exception as e:
-        print(f"Error updating services: {e}")
+        print(f"Error updating services: {type(e).__name__}({e})")
         return 2
 
 
