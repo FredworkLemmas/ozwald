@@ -159,7 +159,13 @@ def integration(
 
     # Also verify the API health endpoint is responsive (on host)
     port = int(os.environ.get("OZWALD_PROVISIONER_PORT", 8000))
-    system_key = os.environ.get("OZWALD_SYSTEM_KEY", "jenny8675")
+    system_key = os.environ.get("OZWALD_SYSTEM_KEY")
+    if not system_key:
+        raise RuntimeError(
+            "OZWALD_SYSTEM_KEY environment variable is not defined. "
+            "This key is required for API authentication during integration "
+            "tests.",
+        )
     # Curl health with a short timeout; no auth required
     # health_ok = c.run(
     #     f"curl -s -m 2 http://localhost:{port}/health",

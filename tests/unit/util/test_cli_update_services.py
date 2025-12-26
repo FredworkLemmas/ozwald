@@ -1,7 +1,19 @@
 import types
 
+import pytest
+
 
 class TestCliUpdateServices:
+    def test_auth_headers_raises_when_key_missing(self, monkeypatch):
+        import util.cli as ucli
+
+        monkeypatch.delenv("OZWALD_SYSTEM_KEY", raising=False)
+        with pytest.raises(KeyError) as excinfo:
+            ucli._auth_headers()
+        assert "OZWALD_SYSTEM_KEY environment variable is not defined" in str(
+            excinfo.value
+        )
+
     def test_primary_path_success(self, mocker):
         import util.cli as ucli
 

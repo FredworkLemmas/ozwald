@@ -77,7 +77,7 @@ def _api_base() -> str:
 
 
 def _auth_headers() -> dict:
-    key = os.environ.get("OZWALD_SYSTEM_KEY", "jenny8675")
+    key = os.environ.get("OZWALD_SYSTEM_KEY")
     return {"Authorization": f"Bearer {key}"}
 
 
