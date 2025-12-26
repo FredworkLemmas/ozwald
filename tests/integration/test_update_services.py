@@ -14,12 +14,12 @@ load_dotenv()
 
 def _load_settings() -> dict:
     settings_path = os.environ.get("DEFAULT_OZWALD_CONFIG") or os.environ.get(
-        "OZWALD_CONFIG"
+        "OZWALD_CONFIG",
     )
     if not settings_path:
         raise RuntimeError(
             "DEFAULT_OZWALD_CONFIG (or OZWALD_CONFIG) must point to the "
-            "settings YAML for integration tests"
+            "settings YAML for integration tests",
         )
     print(f'settings path: "{settings_path}"')
     p = Path(settings_path)
@@ -33,7 +33,7 @@ def _get_provisioner_cache(cfg: dict) -> dict:
     name = os.environ.get("OZWALD_PROVISIONER")
     if not name:
         raise RuntimeError(
-            "OZWALD_PROVISIONER must be set to select provisioner in config"
+            "OZWALD_PROVISIONER must be set to select provisioner in config",
         )
     provs = cfg.get("provisioners", [])
     for prov in provs:
@@ -58,7 +58,11 @@ def clear_redis_before_each_test() -> Iterator[None]:
     password = cache_params.get("password")
 
     client = redis.Redis(
-        host=host, port=port, db=db, password=password, decode_responses=True
+        host=host,
+        port=port,
+        db=db,
+        password=password,
+        decode_responses=True,
     )
     client.flushdb()
     try:
@@ -91,8 +95,7 @@ def _pick_a_service_from_settings() -> tuple[str, str]:
 
 
 def test_update_services_persists_to_redis():
-    """
-    POST to update endpoint should store expected payload.
+    """POST to update endpoint should store expected payload.
 
     A POST to the active services update endpoint should update the
     active_services key in Redis.
@@ -103,7 +106,7 @@ def test_update_services_persists_to_redis():
             "name": f"it-{service_name}-1",
             "service": service_name,
             "profile": profile_name,
-        }
+        },
     ]
 
     resp = requests.post(
@@ -138,8 +141,7 @@ def test_update_services_persists_to_redis():
 
 
 def test_update_services_rejects_invalid_payload_shape():
-    """
-    Sending a non-list payload should yield a 422 from FastAPI validation.
+    """Sending a non-list payload should yield a 422 from FastAPI validation.
 
     A POST to the active services update endpoint should return a 422
     if the payload is not a list.
@@ -154,8 +156,7 @@ def test_update_services_rejects_invalid_payload_shape():
 
 
 def test_update_services_rejects_unknown_service():
-    """
-    Unknown service name should return 400 with a helpful message.
+    """Unknown service name should return 400 with a helpful message.
 
     A POST to the active services update endpoint should return a 400
     if the service name is not found in the settings.
@@ -165,7 +166,7 @@ def test_update_services_rejects_unknown_service():
             "name": "it-unknown-1",
             "service": "service-does-not-exist",
             "profile": "default",
-        }
+        },
     ]
     resp = requests.post(
         _api_base() + "/srv/services/active/update/",

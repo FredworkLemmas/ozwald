@@ -28,8 +28,7 @@ class FakeActiveServicesCache:
 
 
 class SyncThread:
-    """
-    Drop-in replacement for threading.Thread that runs target
+    """Drop-in replacement for threading.Thread that runs target
     synchronously.
     """
 
@@ -94,7 +93,9 @@ def patch_system(monkeypatch):
 
     # Patch in container module; Base no longer uses ActiveServicesCache
     monkeypatch.setattr(
-        cont_mod, "ActiveServicesCache", FakeActiveServicesCache
+        cont_mod,
+        "ActiveServicesCache",
+        FakeActiveServicesCache,
     )
 
     # Short-circuit GPU detection for container module
@@ -112,7 +113,9 @@ def patch_system(monkeypatch):
         return DummyProvisioner(dummy_cache)
 
     monkeypatch.setattr(
-        prov_mod.SystemProvisioner, "singleton", staticmethod(fake_singleton)
+        prov_mod.SystemProvisioner,
+        "singleton",
+        staticmethod(fake_singleton),
     )
 
     return {
@@ -122,10 +125,15 @@ def patch_system(monkeypatch):
 
 
 def _si(
-    name: str, status: ServiceStatus | None, profile: str = "default"
+    name: str,
+    status: ServiceStatus | None,
+    profile: str = "default",
 ) -> ServiceInformation:
     return ServiceInformation(
-        name=name, service="test", profile=profile, status=status
+        name=name,
+        service="test",
+        profile=profile,
+        status=status,
     )
 
 
@@ -157,7 +165,8 @@ class TestBaseProvisionableServiceLifecycle:
         assert "expected ServiceStatus.STARTING" in str(ei.value)
 
     def test_start_success_updates_cache_and_sets_container_id(
-        self, monkeypatch
+        self,
+        monkeypatch,
     ):
         svc = TestService(_si("svc1", ServiceStatus.STARTING))
 
@@ -228,7 +237,8 @@ class TestBaseProvisionableServiceLifecycle:
         assert ["expected ", "ServiceStatus.STOPPING}"][0] in str(ei.value)
 
     def test_stop_success_stops_container_and_removes_from_cache(
-        self, monkeypatch
+        self,
+        monkeypatch,
     ):
         svc = TestService(_si("svc1", ServiceStatus.STOPPING))
 
@@ -272,7 +282,8 @@ class TestBaseProvisionableServiceLifecycle:
 
 class TestServiceRegistry:
     def test_build_service_registry_discovers_services_package(
-        self, monkeypatch
+        self,
+        monkeypatch,
     ):
         # Reset cache
         BaseProvisionableService._service_registry = None
@@ -297,7 +308,8 @@ class TestServiceRegistry:
         def boom():
             call_count["n"] += 1
             raise AssertionError(
-                "_build_service_registry should not be called when cache exists"
+                "_build_service_registry should not be called when "
+                "cache exists",
             )
 
         monkeypatch.setattr(
@@ -312,7 +324,8 @@ class TestServiceRegistry:
         assert call_count["n"] == 0
 
     def test_build_service_registry_includes_dynamically_added_module(
-        self, monkeypatch
+        self,
+        monkeypatch,
     ):
         # Create a dynamic module under services namespace
         import sys as _sys
@@ -369,7 +382,7 @@ class TestEffectiveConfigResolution:
                 entrypoint=["var-entry"],
                 env_file=["var.env"],
                 environment={"A": "var", "V": "var"},
-            )
+            ),
         }
 
         # Profiles (now a dict of profiles)
@@ -383,7 +396,7 @@ class TestEffectiveConfigResolution:
                 entrypoint=["prof-entry"],
                 env_file=["prof.env"],
                 environment={"A": "prof", "P": "prof"},
-            )
+            ),
         }
 
         return svc
@@ -430,7 +443,10 @@ class TestEffectiveConfigResolution:
 
     def test_effective_service_only(self, mock_reader):
         si = ServiceInformation(
-            name="n1", service="test", profile=None, status=None
+            name="n1",
+            service="test",
+            profile=None,
+            status=None,
         )
         svc = type(self)._Svc(si)
 
@@ -468,7 +484,10 @@ class TestEffectiveConfigResolution:
 
     def test_effective_with_profile_only(self, mock_reader):
         si = ServiceInformation(
-            name="n1", service="test", profile="gpu", status=None
+            name="n1",
+            service="test",
+            profile="gpu",
+            status=None,
         )
         svc = type(self)._Svc(si)
 

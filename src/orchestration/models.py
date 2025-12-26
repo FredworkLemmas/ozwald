@@ -1,11 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    pass
 
 # ============================================================================
 # Resource Models
@@ -24,8 +23,8 @@ class Resource(BaseModel):
     type: ResourceType
     unit: str
     value: float
-    related_resources: List[str] | None
-    extended_attributes: Dict[str, Any] | None
+    related_resources: list[str] | None
+    extended_attributes: dict[str, Any] | None
 
 
 # ============================================================================
@@ -36,26 +35,27 @@ class Resource(BaseModel):
 class Host(BaseModel):
     name: str
     ip: str
-    resources: List[Resource] = Field(default_factory=list)
+    resources: list[Resource] = Field(default_factory=list)
 
 
 # ============================================================================
-# Profiler Models
+# Footprint Models
 # ============================================================================
 
 
 class ConfiguredServiceIdentifier(BaseModel):
     service_name: str
-    profile: str
+    profile: str | None = None
+    variety: str | None = None
 
 
-class ProfilerAction(BaseModel):
-    profile_all_services: bool = False
-    services: Optional[List[ConfiguredServiceIdentifier]] = None
-    requested_at: Optional[datetime] = None
-    request_id: Optional[str] = None
-    profile_in_progress: bool = False
-    profile_started_at: Optional[datetime] = None
+class FootprintAction(BaseModel):
+    footprint_all_services: bool = False
+    services: list[ConfiguredServiceIdentifier] | None = None
+    requested_at: datetime | None = None
+    request_id: str | None = None
+    footprint_in_progress: bool = False
+    footprint_started_at: datetime | None = None
 
 
 # ============================================================================
@@ -78,56 +78,57 @@ class ServiceType(str, Enum):
 
 class ServiceDefinitionProfile(BaseModel):
     name: str
-    description: Optional[str] = None
-    image: Optional[str] = None
-    depends_on: List[str] = Field(default_factory=list)
-    command: Optional[List[str] | str] = None
-    entrypoint: Optional[List[str] | str] = None
-    env_file: List[str] = Field(default_factory=list)
-    environment: Dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
+    image: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
+    command: list[str] | str | None = None
+    entrypoint: list[str] | str | None = None
+    env_file: list[str] = Field(default_factory=list)
+    environment: dict[str, Any] = Field(default_factory=dict)
     # Normalized docker volume strings, e.g. "/host:/ctr:ro" or
     # "named_vol:/ctr:rw"
-    volumes: List[str] = Field(default_factory=list)
+    volumes: list[str] = Field(default_factory=list)
 
 
 class ServiceDefinitionVariety(BaseModel):
-    image: Optional[str]
-    depends_on: Optional[List[str]] = Field(default_factory=list)
-    command: Optional[List[str] | str] = None
-    entrypoint: Optional[List[str] | str] = None
-    env_file: Optional[List[str]] = Field(default_factory=list)
-    environment: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    image: str | None
+    depends_on: list[str] | None = Field(default_factory=list)
+    command: list[str] | str | None = None
+    entrypoint: list[str] | str | None = None
+    env_file: list[str] | None = Field(default_factory=list)
+    environment: dict[str, Any] | None = Field(default_factory=dict)
     # Normalized docker volume strings, same format as on the base service
-    volumes: List[str] = Field(default_factory=list)
+    volumes: list[str] = Field(default_factory=list)
 
 
 class ServiceDefinition(BaseModel):
     service_name: str
     type: str | ServiceType
-    description: Optional[str] = None
+    description: str | None = None
 
     # image is required for CONTAINER services, but optional for SOURCE_FILES
     # and API services.
-    image: Optional[str] = ""
+    image: str | None = ""
 
-    depends_on: Optional[List[str]] = Field(default_factory=list)
-    command: Optional[List[str] | str] = None
-    entrypoint: Optional[List[str] | str] = None
-    env_file: Optional[List[str]] = Field(default_factory=list)
-    environment: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    depends_on: list[str] | None = Field(default_factory=list)
+    command: list[str] | str | None = None
+    entrypoint: list[str] | str | None = None
+    env_file: list[str] | None = Field(default_factory=list)
+    environment: dict[str, Any] | None = Field(default_factory=dict)
     # List of normalized volume mount strings ready for docker CLI, e.g.,
     # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
-    volumes: Optional[List[str]] = Field(default_factory=list)
-    profiles: Optional[Dict[str, ServiceDefinitionProfile]] = Field(
-        default_factory=dict
+    volumes: list[str] | None = Field(default_factory=list)
+    profiles: dict[str, ServiceDefinitionProfile] | None = Field(
+        default_factory=dict,
     )
-    varieties: Optional[Dict[str, ServiceDefinitionVariety]] = Field(
-        default_factory=dict
+    varieties: dict[str, ServiceDefinitionVariety] | None = Field(
+        default_factory=dict,
     )
 
     def get_profile_by_name(
-        self, name: str
-    ) -> Optional[ServiceDefinitionProfile]:
+        self,
+        name: str,
+    ) -> ServiceDefinitionProfile | None:
         return (self.profiles or {}).get(name)
 
 
@@ -148,7 +149,7 @@ class Service(BaseModel):
     name: str
     service_name: str  # Reference to ServiceDefinition
     host: str
-    parameters: Optional[Dict[str, Any]] = None
+    parameters: dict[str, Any] | None = None
 
 
 class ServiceInformation(BaseModel):
@@ -156,10 +157,10 @@ class ServiceInformation(BaseModel):
 
     name: str
     service: str
-    variety: Optional[str] = None
-    profile: Optional[str] = None
-    status: Optional[ServiceStatus] = None
-    info: Optional[Dict[str, Any]] = {}  # None on request, dict on response
+    variety: str | None = None
+    profile: str | None = None
+    status: ServiceStatus | None = None
+    info: dict[str, Any] | None = {}  # None on request, dict on response
 
 
 # ============================================================================
@@ -169,7 +170,7 @@ class ServiceInformation(BaseModel):
 
 class Cache(BaseModel):
     type: str
-    parameters: Dict[str, Any] | None = None
+    parameters: dict[str, Any] | None = None
 
 
 # ============================================================================
@@ -185,8 +186,8 @@ class Provisioner(BaseModel):
 
 class ProvisionerState(BaseModel):
     provisioner: str
-    available_resources: List[Resource]
-    services: List[Service] | None
+    available_resources: list[Resource]
+    services: list[Service] | None
 
 
 # ============================================================================
@@ -195,11 +196,11 @@ class ProvisionerState(BaseModel):
 
 
 class OzwaldConfig(BaseModel):
-    hosts: List[Host] = Field(default_factory=list)
-    services: List[ServiceDefinition] = Field(default_factory=list)
-    provisioners: List[Provisioner] = Field(default_factory=list)
+    hosts: list[Host] = Field(default_factory=list)
+    services: list[ServiceDefinition] = Field(default_factory=list)
+    provisioners: list[Provisioner] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
-    volumes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    volumes: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 # ============================================================================
@@ -220,16 +221,16 @@ class ProvisionerProfile(BaseModel):
 class ResourceConstraints(BaseModel):
     """Resource requirements and constraints for services"""
 
-    gpu_memory_required: Optional[str] = None
-    cpu_memory_required: Optional[str] = None
-    max_concurrent_instances: Optional[int] = None
+    gpu_memory_required: str | None = None
+    cpu_memory_required: str | None = None
+    max_concurrent_instances: int | None = None
     exclusive_gpu: bool = False
 
 
 class HealthCheck(BaseModel):
     """Health check configuration for services"""
 
-    endpoint: Optional[str] = None
+    endpoint: str | None = None
     interval_seconds: int = 30
     timeout_seconds: int = 10
     retries: int = 3
@@ -264,30 +265,30 @@ class MonitoringConfig(BaseModel):
     """Monitoring and observability configuration"""
 
     metrics_enabled: bool = True
-    metrics_endpoint: Optional[str] = "/metrics"
-    metrics_port: Optional[int] = None
+    metrics_endpoint: str | None = "/metrics"
+    metrics_port: int | None = None
     logging_level: str = "INFO"
     tracing_enabled: bool = False
-    tracing_endpoint: Optional[str] = None
+    tracing_endpoint: str | None = None
 
 
 class TransformerModelConfig(BaseModel):
     """Model management configuration"""
 
-    cache_dir: Optional[str] = None
+    cache_dir: str | None = None
     download_policy: str = "on_demand"  # on_demand, pre_download, never
-    quantization: Optional[str] = None  # e.g., "int4", "int8", "fp16"
+    quantization: str | None = None  # e.g., "int4", "int8", "fp16"
     trust_remote_code: bool = False
 
 
 class DSPyConfig(BaseModel):
     """DSPy-specific configuration"""
 
-    module_class: Optional[str] = None
-    optimizer: Optional[str] = None  # e.g., "MIPROv2", "BootstrapFewShot"
-    optimizer_params: Dict[str, Any] = Field(default_factory=dict)
-    evaluation_metrics: List[str] = Field(default_factory=list)
-    dataset_path: Optional[str] = None
+    module_class: str | None = None
+    optimizer: str | None = None  # e.g., "MIPROv2", "BootstrapFewShot"
+    optimizer_params: dict[str, Any] = Field(default_factory=dict)
+    evaluation_metrics: list[str] = Field(default_factory=list)
+    dataset_path: str | None = None
 
 
 class NetworkConfig(BaseModel):
@@ -296,10 +297,10 @@ class NetworkConfig(BaseModel):
     service_discovery: str = "static"  # static, consul, etcd, kubernetes
     api_version: str = "v1"
     auth_enabled: bool = False
-    auth_type: Optional[str] = None  # e.g., "token", "mtls", "oauth2"
+    auth_type: str | None = None  # e.g., "token", "mtls", "oauth2"
     tls_enabled: bool = False
-    tls_cert_path: Optional[str] = None
-    tls_key_path: Optional[str] = None
+    tls_cert_path: str | None = None
+    tls_key_path: str | None = None
 
 
 class StorageConfig(BaseModel):
@@ -315,21 +316,21 @@ class StorageConfig(BaseModel):
 class EnhancedServiceDefinition(ServiceDefinition):
     """Extended ServiceDefinition with DSPy/LLM pipeline features"""
 
-    resource_constraints: Optional[ResourceConstraints] = None
-    health_check: Optional[HealthCheck] = None
-    dependencies: List[ServiceDependency] = Field(default_factory=list)
-    retry_policy: Optional[RetryPolicy] = None
-    circuit_breaker: Optional[CircuitBreaker] = None
-    monitoring: Optional[MonitoringConfig] = None
-    transformer_model_config: Optional[TransformerModelConfig] = None
-    dspy_config: Optional[DSPyConfig] = None
-    network_config: Optional[NetworkConfig] = None
-    storage_config: Optional[StorageConfig] = None
+    resource_constraints: ResourceConstraints | None = None
+    health_check: HealthCheck | None = None
+    dependencies: list[ServiceDependency] = Field(default_factory=list)
+    retry_policy: RetryPolicy | None = None
+    circuit_breaker: CircuitBreaker | None = None
+    monitoring: MonitoringConfig | None = None
+    transformer_model_config: TransformerModelConfig | None = None
+    dspy_config: DSPyConfig | None = None
+    network_config: NetworkConfig | None = None
+    storage_config: StorageConfig | None = None
 
 
 class EnhancedOzwaldConfig(OzwaldConfig):
     """Extended OzwaldConfig with additional pipeline features"""
 
-    global_monitoring: Optional[MonitoringConfig] = None
-    global_network: Optional[NetworkConfig] = None
-    global_storage: Optional[StorageConfig] = None
+    global_monitoring: MonitoringConfig | None = None
+    global_network: NetworkConfig | None = None
+    global_storage: StorageConfig | None = None

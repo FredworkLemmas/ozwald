@@ -1,11 +1,12 @@
+import pathlib
+
 import pytest
 import yaml
 
 
 @pytest.fixture
 def sample_config_dict():
-    """
-    Provides a complete sample configuration dictionary that matches the
+    """Provides a complete sample configuration dictionary that matches the
     expected YAML structure for testing ConfigReader.
     """
     return {
@@ -103,7 +104,7 @@ def sample_config_dict():
                     "cpu-only": {"image": "openai-api-vllm.cpu-only"},
                 },
                 "environment": {
-                    "MODEL_NAME": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+                    "MODEL_NAME": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
                 },
                 "profiles": [
                     {
@@ -152,48 +153,39 @@ def sample_config_dict():
 
 @pytest.fixture
 def sample_config_file(sample_config_dict, tmp_path):
-    """
-    Creates a temporary YAML configuration file with sample data
+    """Creates a temporary YAML configuration file with sample data
     for testing ConfigReader initialization.
     """
     config_file = tmp_path / "config.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         yaml.dump(sample_config_dict, f)
     return config_file
 
 
 @pytest.fixture
 def minimal_config_dict():
-    """
-    Provides a minimal valid configuration with only required fields.
-    """
+    """Provides a minimal valid configuration with only required fields."""
     return {"hosts": [], "services": [], "provisioners": []}
 
 
 @pytest.fixture
 def config_without_cache_dict():
-    """
-    Provides a configuration without cache to test optional cache field.
-    """
+    """Provides a configuration without cache to test optional cache field."""
     return {"hosts": [], "services": [], "provisioners": []}
 
 
 @pytest.fixture
 def config_without_cache_file(config_without_cache_dict, tmp_path):
-    """
-    Creates a temporary YAML file without cache configuration.
-    """
+    """Creates a temporary YAML file without cache configuration."""
     config_file = tmp_path / "no_cache_config.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         yaml.dump(config_without_cache_dict, f)
     return config_file
 
 
 @pytest.fixture
 def config_with_provisioner_without_cache_dict():
-    """
-    Provides a configuration with provisioners that don't have cache.
-    """
+    """Provides a configuration with provisioners that don't have cache."""
     return {
         "hosts": [],
         "services": [],
@@ -203,33 +195,28 @@ def config_with_provisioner_without_cache_dict():
 
 @pytest.fixture
 def config_with_provisioner_without_cache_file(
-    config_with_provisioner_without_cache_dict, tmp_path
+    config_with_provisioner_without_cache_dict,
+    tmp_path,
 ):
-    """
-    Creates a temporary YAML file with provisioners without cache.
-    """
+    """Creates a temporary YAML file with provisioners without cache."""
     config_file = tmp_path / "provisioner_no_cache.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         yaml.dump(config_with_provisioner_without_cache_dict, f)
     return config_file
 
 
 @pytest.fixture
 def minimal_config_file(minimal_config_dict, tmp_path):
-    """
-    Creates a temporary YAML file with minimal valid configuration.
-    """
+    """Creates a temporary YAML file with minimal valid configuration."""
     config_file = tmp_path / "minimal_config.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         yaml.dump(minimal_config_dict, f)
     return config_file
 
 
 @pytest.fixture
 def empty_config_file(tmp_path):
-    """
-    Creates an empty YAML configuration file for error testing.
-    """
+    """Creates an empty YAML configuration file for error testing."""
     config_file = tmp_path / "empty_config.yml"
     config_file.touch()
     return config_file
@@ -237,30 +224,25 @@ def empty_config_file(tmp_path):
 
 @pytest.fixture
 def invalid_yaml_file(tmp_path):
-    """
-    Creates a YAML file with invalid syntax for error testing.
-    """
+    """Creates a YAML file with invalid syntax for error testing."""
     config_file = tmp_path / "invalid_config.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         f.write("hosts:\n  - name: test\n  invalid yaml: {{{}}")
     return config_file
 
 
 @pytest.fixture
 def missing_orchestrator_config_dict():
-    """
-    Deprecated: orchestrator section removed from simplified schema.
-    """
+    """Deprecated: orchestrator section removed from simplified schema."""
     return {"hosts": [], "services": [], "provisioners": []}
 
 
 @pytest.fixture
 def missing_orchestrator_file(missing_orchestrator_config_dict, tmp_path):
-    """
-    Deprecated: orchestrator section removed; keep for compatibility of
+    """Deprecated: orchestrator section removed; keep for compatibility of
     fixtures with simplified schema.
     """
     config_file = tmp_path / "no_orchestrator.yml"
-    with open(config_file, "w") as f:
+    with pathlib.Path(config_file).open("w") as f:
         yaml.dump(missing_orchestrator_config_dict, f)
     return config_file

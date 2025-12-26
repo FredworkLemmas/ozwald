@@ -30,7 +30,10 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
     """Ensure the Docker image exists locally; build if missing."""
     # Check for image
     check = subprocess.run(
-        ["docker", "image", "inspect", image], capture_output=True, text=True
+        ["docker", "image", "inspect", image],
+        check=False,
+        capture_output=True,
+        text=True,
     )
     if check.returncode == 0:
         return
@@ -38,29 +41,44 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
     # Build image
     build = subprocess.run(
         ["docker", "build", "-t", image, "-f", dockerfile_path, "."],
+        check=False,
         capture_output=True,
         text=True,
     )
     if build.returncode != 0:
         raise RuntimeError(
-            f"Failed to build image {image}: {build.stderr or build.stdout}"
+            f"Failed to build image {image}: {build.stderr or build.stdout}",
         )
 
 
 def _flush_redis(
-    host: str, port: int, db: int = 0, password: str | None = None
+    host: str,
+    port: int,
+    db: int = 0,
+    password: str | None = None,
 ):
     client = redis.Redis(
-        host=host, port=port, db=db, password=password, decode_responses=True
+        host=host,
+        port=port,
+        db=db,
+        password=password,
+        decode_responses=True,
     )
     client.flushdb()
 
 
 def _active_services_snapshot(
-    host: str, port: int, db: int = 0, password: str | None = None
+    host: str,
+    port: int,
+    db: int = 0,
+    password: str | None = None,
 ) -> list:
     client = redis.Redis(
-        host=host, port=port, db=db, password=password, decode_responses=True
+        host=host,
+        port=port,
+        db=db,
+        password=password,
+        decode_responses=True,
     )
     data = client.get("active_services")
     if not data:
@@ -81,6 +99,7 @@ def _container_running(name: str) -> bool:
             "--format",
             "{{.Names}}",
         ],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -90,6 +109,7 @@ def _container_running(name: str) -> bool:
 def _container_logs(name: str, tail: int = 10) -> str:
     result = subprocess.run(
         ["docker", "logs", "--tail", str(tail), name],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -113,7 +133,7 @@ def _wait_for(
         time.sleep(interval)
     if last_err:
         raise AssertionError(
-            f"Timed out waiting for {description}: last error: {last_err}"
+            f"Timed out waiting for {description}: last error: {last_err}",
         )
     raise AssertionError(f"Timed out waiting for {description}")
 
@@ -126,7 +146,7 @@ def docker_prereq():
     if not _docker_available():
         pytest.skip(
             "Docker CLI not available; skipping provisioner "
-            "backend integration tests"
+            "backend integration tests",
         )
 
     # Ensure simple_test_1 image exists (build if needed)
@@ -150,8 +170,7 @@ def dev_settings_path() -> Path:
 
 @pytest.fixture(scope="module")
 def env_for_daemon(dev_settings_path: Path) -> dict:
-    """
-    Prepare environment for both the parent test process and the daemon
+    """Prepare environment for both the parent test process and the daemon
     subprocess.
 
     This sets OZWALD_CONFIG and OZWALD_PROVISIONER in the current process
@@ -235,8 +254,7 @@ def _update_services(service_updates: List[dict]):
 def test_run_backend_daemon_start_stop_two_instances_individually(
     env_for_daemon,
 ):
-    """
-    Test basic functionality of the provisioner backend daemon:
+    """Test basic functionality of the provisioner backend daemon:
 
     - Add a single simple_test_1 instance to cache with status STARTING
       and verify it starts
@@ -262,7 +280,7 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
             "service": service_name,
             "profile": profile,
             "status": ServiceStatus.STARTING,
-        }
+        },
     ])
 
     # Wait for container A running and AVAILABLE in cache
@@ -284,7 +302,9 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
         return False
 
     _wait_for(
-        a_available, timeout=45, description="service A AVAILABLE in cache"
+        a_available,
+        timeout=45,
+        description="service A AVAILABLE in cache",
     )
 
     # Verify logs have expected lines
@@ -365,5 +385,7 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
         )
 
     _wait_for(
-        cache_empty, timeout=45, description="active services cache empty"
+        cache_empty,
+        timeout=45,
+        description="active services cache empty",
     )

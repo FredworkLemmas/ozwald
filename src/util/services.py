@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 
-BASE_DIR = os.getcwd()
+BASE_DIR = Path.cwd()
 env_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path=env_path)
 
@@ -13,7 +13,10 @@ PROVISIONER_NETWORK = "provisioner_network"
 
 
 def _run(
-    cmd: str, *, check: bool = False, capture: bool = False
+    cmd: str,
+    *,
+    check: bool = False,
+    capture: bool = False,
 ) -> subprocess.CompletedProcess:
     """Run a shell command using subprocess.
 
@@ -21,6 +24,7 @@ def _run(
         cmd: Command string to execute.
         check: If True, raise on non-zero return code.
         capture: If True, capture stdout/stderr.
+
     """
     kwargs = {
         "shell": True,
@@ -77,7 +81,7 @@ def remove_provisioner_network() -> None:
         print(
             "Could not remove network "
             f"'{PROVISIONER_NETWORK}'. "
-            "It may not exist or is still in use."
+            "It may not exist or is still in use.",
         )
 
 
@@ -94,26 +98,29 @@ def _compose_gpu_opts() -> str:
 
 
 def start_provisioner_api(
-    *, port: int = None, restart: bool = True, mount_source_dir=False
+    *,
+    port: int = None,
+    restart: bool = True,
+    mount_source_dir=False,
 ) -> None:
     container_name = "ozwald-provisioner-api-arch"
     image_tag = "ozwald-provisioner-api-arch:latest"
     port = int(
         port
         if port is not None
-        else os.environ.get("OZWALD_PROVISIONER_PORT", 8000)
+        else os.environ.get("OZWALD_PROVISIONER_PORT", 8000),
     )
 
     # stop/remove on restart if exists
     exists = _run(
         f"docker ps -a --filter name={container_name} --format "
-        + "'{{.Names}}'",
+        "'{{.Names}}'",
         capture=True,
     )
     if (exists.stdout or "").strip() == container_name:
         running = _run(
             f"docker ps --filter name={container_name} --format "
-            + "'{{.Names}}'",
+            "'{{.Names}}'",
             capture=True,
         )
         if (running.stdout or "").strip() == container_name:
@@ -194,20 +201,22 @@ def _docker_group_id() -> Optional[int]:
 
 
 def start_provisioner_backend(
-    *, restart: bool = True, mount_source_dir=False
+    *,
+    restart: bool = True,
+    mount_source_dir=False,
 ) -> None:
     container_name = "ozwald-provisioner-backend"
     image_tag = "ozwald-provisioner-backend:latest"
 
     exists = _run(
         f"docker ps -a --filter name={container_name} --format "
-        + "'{{.Names}}'",
+        "'{{.Names}}'",
         capture=True,
     )
     if (exists.stdout or "").strip() == container_name:
         running = _run(
             f"docker ps --filter name={container_name} --format "
-            + "'{{.Names}}'",
+            "'{{.Names}}'",
             capture=True,
         )
         if (running.stdout or "").strip() == container_name:
@@ -243,7 +252,8 @@ def start_provisioner_backend(
         os.environ.get("OZWALD_PROVISIONER", "unconfigured"),
     )
     host_name = os.environ.get(
-        "DEFAULT_OZWALD_HOST", os.environ.get("OZWALD_HOST", "localhost")
+        "DEFAULT_OZWALD_HOST",
+        os.environ.get("OZWALD_HOST", "localhost"),
     )
 
     user_id = _user_id()
@@ -284,18 +294,18 @@ def start_provisioner_redis(*, port: int = None, restart: bool = True) -> None:
     port = int(
         port
         if port is not None
-        else os.environ.get("OZWALD_PROVISIONER_REDIS_PORT", 6479)
+        else os.environ.get("OZWALD_PROVISIONER_REDIS_PORT", 6479),
     )
 
     exists = _run(
         f"docker ps -a --filter name={container_name} --format "
-        + "'{{.Names}}'",
+        "'{{.Names}}'",
         capture=True,
     )
     if (exists.stdout or "").strip() == container_name:
         running = _run(
             f"docker ps --filter name={container_name} --format "
-            + "'{{.Names}}'",
+            "'{{.Names}}'",
             capture=True,
         )
         if (running.stdout or "").strip() == container_name:
@@ -308,7 +318,7 @@ def start_provisioner_redis(*, port: int = None, restart: bool = True) -> None:
             else:
                 print(
                     f"Container {container_name} is already running on port "
-                    f"{port}"
+                    f"{port}",
                 )
                 return
         else:

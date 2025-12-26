@@ -17,11 +17,13 @@ load_dotenv()
 DEFAULT_OZWALD_SYSTEM_KEY = "jenny8675"
 DEFAULT_PROVISIONER_PORT = os.environ.get("OZWALD_PROVISIONER_PORT", 8000)
 DEFAULT_PROVISIONER_REDIS_PORT = os.environ.get(
-    "OZWALD_PROVISIONER_REDIS_PORT", 6479
+    "OZWALD_PROVISIONER_REDIS_PORT",
+    6479,
 )
 
 DEFAULT_REL_OR_ABS_OZWALD_CONFIG = os.environ.get(
-    "OZWALD_CONFIG", "dev/resources/settings.yml"
+    "OZWALD_CONFIG",
+    "dev/resources/settings.yml",
 )
 DEFAULT_OZWALD_CONFIG = (
     DEFAULT_REL_OR_ABS_OZWALD_CONFIG
@@ -29,7 +31,8 @@ DEFAULT_OZWALD_CONFIG = (
     else Path(__file__).parent.parent / DEFAULT_REL_OR_ABS_OZWALD_CONFIG
 )
 DEFAULT_OZWALD_PROVISIONER = os.environ.get(
-    "DEFAULT_OZWALD_PROVISIONER", "unconfigured"
+    "DEFAULT_OZWALD_PROVISIONER",
+    "unconfigured",
 )
 DEFAULT_OZWALD_HOST = os.environ.get("DEFAULT_OZWALD_HOST", "localhost")
 
@@ -42,6 +45,7 @@ def show_host_resources(c, use_api=False, port=DEFAULT_PROVISIONER_PORT):
         use_api: If True, fetch resources from the API endpoint instead
                  of directly
         port: Port where the provisioner API is running (default: 8000)
+
     """
     if use_api:
         print("[using api for host resources]")
@@ -78,7 +82,7 @@ def show_host_resources(c, use_api=False, port=DEFAULT_PROVISIONER_PORT):
     print(
         "  Available GPUs:   "
         f"{len(resources.available_gpus)} "
-        f"(IDs: {resources.available_gpus})"
+        f"(IDs: {resources.available_gpus})",
     )
     print(f"  Total VRAM:       {resources.total_vram_gb:6.2f} GB")
     print(f"  Available VRAM:   {resources.available_vram_gb:6.2f} GB")
@@ -178,6 +182,7 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
 
     Args:
         port: Port where the provisioner API is running (default: 8000)
+
     """
     try:
         services_data = ucli.get_configured_services(port=port)
@@ -265,6 +270,7 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
 
     Args:
         port: Port where the provisioner API is running (default: 8000)
+
     """
     try:
         services_data = ucli.get_active_services(port=port)
@@ -360,6 +366,7 @@ def update_services(c, service, port=DEFAULT_PROVISIONER_PORT):
         inv dev.update-services --service some-model[qwen7-vllm@no-gpu]
         inv dev.update-services --service model1[qwen7-vllm] \
                                 --service model2[llama-vllm@gpu]
+
     """
     # validate input
     if not service:
@@ -395,7 +402,9 @@ def update_services(c, service, port=DEFAULT_PROVISIONER_PORT):
                 profile = None
 
             service_obj = ServiceInformation(
-                name=service_name, service=service_type, profile=profile
+                name=service_name,
+                service=service_type,
+                profile=profile,
             )
 
             services_to_update.append(service_obj)
@@ -424,7 +433,7 @@ def update_services(c, service, port=DEFAULT_PROVISIONER_PORT):
             for i, service in enumerate(services_to_update, 1):
                 profile_info = f"@{service.profile}" if service.profile else ""
                 print(
-                    f"  [{i}] {service.name}[{service.service}{profile_info}]"
+                    f"  [{i}] {service.name}[{service.service}{profile_info}]",
                 )
             print("\n" + "=" * 80 + "\n")
         else:
@@ -459,7 +468,9 @@ def start_provisioner_backend(c, restart=True):
 
 @task(namespace="dev", name="start-provisioner-redis")
 def start_provisioner_redis(
-    c, port=DEFAULT_PROVISIONER_REDIS_PORT, restart=True
+    c,
+    port=DEFAULT_PROVISIONER_REDIS_PORT,
+    restart=True,
 ):
     """Start a Redis container for the provisioner via util.services."""
     svc.start_provisioner_redis(port=port, restart=restart)
@@ -482,6 +493,7 @@ def start_provisioner(
             DEFAULT_PROVISIONER_REDIS_PORT)
         restart: If True, stop and restart containers if they're already
             running
+
     """
     print("Starting provisioner stack: network -> redis -> backend -> api ...")
     # Ensure network exists first
@@ -490,11 +502,14 @@ def start_provisioner(
     svc.start_provisioner_redis(port=redis_port, restart=restart)
     # Then the backend worker/services
     svc.start_provisioner_backend(
-        restart=restart, mount_source_dir=mount_source_dir
+        restart=restart,
+        mount_source_dir=mount_source_dir,
     )
     # Finally the API
     svc.start_provisioner_api(
-        port=api_port, restart=restart, mount_source_dir=mount_source_dir
+        port=api_port,
+        restart=restart,
+        mount_source_dir=mount_source_dir,
     )
     print("✓ Provisioner stack started")
 

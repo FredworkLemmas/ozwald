@@ -23,7 +23,7 @@ def _parse_timeout_env(
 
 
 DEFAULT_HTTP_TIMEOUT: Union[float, Tuple[float, float]] = _parse_timeout_env(
-    os.environ.get("OZWALD_HTTP_TIMEOUT")
+    os.environ.get("OZWALD_HTTP_TIMEOUT"),
 )
 
 
@@ -43,6 +43,7 @@ def get(
         timeout: Optional timeout override (seconds or (connect, read)).
         session: Optional requests.Session to use
         **kwargs: Passed through to requests.get
+
     """
     to = timeout if timeout is not None else DEFAULT_HTTP_TIMEOUT
     if session is None:
@@ -66,6 +67,7 @@ def post(
         timeout: Optional timeout override (seconds or (connect, read)).
         session: Optional requests.Session to use
         **kwargs: Passed through to requests.post
+
     """
     to = timeout if timeout is not None else DEFAULT_HTTP_TIMEOUT
     if session is None:

@@ -41,14 +41,16 @@ def _ensure_temp_assets(
         (solar_root / "jupiter").mkdir(parents=True, exist_ok=True)
         (solar_root / "saturn").mkdir(parents=True, exist_ok=True)
         (solar_root / "jupiter" / "europa.txt").write_text(
-            "icy world\n", encoding="utf-8"
+            "icy world\n",
+            encoding="utf-8",
         )
         (solar_root / "saturn" / "titan.txt").write_text(
-            "hazy moon\n", encoding="utf-8"
+            "hazy moon\n",
+            encoding="utf-8",
         )
 
         provisioner_name = provisioner_name or os.environ.get(
-            "OZWALD_PROVISIONER"
+            "OZWALD_PROVISIONER",
         )
 
         # Compose minimal settings
@@ -66,7 +68,7 @@ def _ensure_temp_assets(
                             "db": 0,
                         },
                     },
-                }
+                },
             ],
             "services": [
                 {
@@ -84,7 +86,7 @@ def _ensure_temp_assets(
                             "name": "solar_system",
                             "target": "/solar_system",
                             "read_only": True,
-                        }
+                        },
                     ],
                 },
                 {
@@ -98,11 +100,12 @@ def _ensure_temp_assets(
                 "solar_system": {
                     "type": "bind",
                     "source": str(solar_root.resolve()),
-                }
+                },
             },
         }
         settings_path.write_text(
-            yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8"
+            yaml.safe_dump(cfg, sort_keys=False),
+            encoding="utf-8",
         )
 
     return root, settings_path
@@ -125,13 +128,16 @@ def integration(
     """
     # Determine expected container names (as used by dev tasks)
     api_container = os.environ.get(
-        "OZWALD_PROVISIONER_API_CONTAINER", "ozwald-provisioner-api-arch"
+        "OZWALD_PROVISIONER_API_CONTAINER",
+        "ozwald-provisioner-api-arch",
     )
     backend_container = os.environ.get(
-        "OZWALD_PROVISIONER_BACKEND_CONTAINER", "ozwald-provisioner-backend"
+        "OZWALD_PROVISIONER_BACKEND_CONTAINER",
+        "ozwald-provisioner-backend",
     )
     redis_container = os.environ.get(
-        "OZWALD_PROVISIONER_REDIS_CONTAINER", "ozwald-provisioner-redis"
+        "OZWALD_PROVISIONER_REDIS_CONTAINER",
+        "ozwald-provisioner-redis",
     )
 
     # Helper to check if a container is running
@@ -169,19 +175,19 @@ def integration(
     if missing:
         print(
             "\nCannot run integration tests because the following required "
-            "services are not running:"
+            "services are not running:",
         )
         for m in missing:
             print(f" - {m}")
         print(
             "\nPlease start the provisioner stack (API, backend, and Redis) "
-            "before running integration tests."
+            "before running integration tests.",
         )
         print(
             "For example:\n  invocate dev.start-provisioner-network\n  "
             "invocate dev.start-provisioner-redis\n  "
             "invocate dev.start-provisioner-backend\n  "
-            "invocate dev.start-provisioner-api"
+            "invocate dev.start-provisioner-api",
         )
         print("Once the services are running, rerun: invocate test.integration")
         return
@@ -243,10 +249,14 @@ def integration(
 
 @task(namespace="test", name="coverage")
 def coverage(
-    c, path="tests/unit/", source="src", html=False, xml=False, fail_under=None
+    c,
+    path="tests/unit/",
+    source="src",
+    html=False,
+    xml=False,
+    fail_under=None,
 ):
-    """
-    Run tests with coverage measurement and print a coverage report.
+    """Run tests with coverage measurement and print a coverage report.
 
     Args:
         c: invocate context (passed automatically).
@@ -257,6 +267,7 @@ def coverage(
         xml: generate an XML report (coverage xml) if True.
         fail_under: if provided (int/float), fail if total coverage is
             under this percent.
+
     """
     # Run pytest under coverage, measuring the specified source
     # directories/packages

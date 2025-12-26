@@ -26,7 +26,8 @@ class GPUResource(BaseModel):
     available_vram: float = Field(..., description="Available VRAM in MB")
     description: str = Field(..., description="GPU description/name")
     pci_device_description: str = Field(
-        ..., description="PCI device description"
+        ...,
+        description="PCI device description",
     )
 
 
@@ -35,22 +36,27 @@ class HostResources(BaseModel):
 
     total_cpu_cores: int = Field(..., description="Total number of CPU cores")
     available_cpu_cores: int = Field(
-        ..., description="Number of available CPU cores"
+        ...,
+        description="Number of available CPU cores",
     )
     total_ram_gb: float = Field(..., description="Total RAM in gigabytes")
     available_ram_gb: float = Field(
-        ..., description="Available RAM in gigabytes"
+        ...,
+        description="Available RAM in gigabytes",
     )
     total_vram_gb: float = Field(..., description="Total VRAM in gigabytes")
     available_vram_gb: float = Field(
-        ..., description="Available VRAM in gigabytes"
+        ...,
+        description="Available VRAM in gigabytes",
     )
     total_gpus: int = Field(..., description="Total number of GPUs")
     available_gpus: list[int] = Field(
-        default_factory=list, description="List of available GPU IDs"
+        default_factory=list,
+        description="List of available GPU IDs",
     )
     gpus: list[GPUResource] = Field(
-        default_factory=list, description="List of GPU resources"
+        default_factory=list,
+        description="List of GPU resources",
     )
 
     @staticmethod
@@ -58,7 +64,10 @@ class HostResources(BaseModel):
         """Get the list of installed GPU drivers."""
         try:
             result = subprocess.run(
-                ["lsmod"], capture_output=True, text=True, check=True
+                ["lsmod"],
+                capture_output=True,
+                text=True,
+                check=True,
             )
             lsmod_output = result.stdout
         except subprocess.CalledProcessError:
@@ -94,11 +103,11 @@ class HostResources(BaseModel):
 
     @classmethod
     def inspect_host(cls) -> "HostResources":
-        """
-        Get current system resource information.
+        """Get current system resource information.
 
         Returns:
             HostResources object with total and available resources
+
         """
         # CPU information
         total_cpu = psutil.cpu_count()
@@ -157,11 +166,11 @@ class HostResources(BaseModel):
 
     @staticmethod
     def _get_nvidia_gpu_info() -> tuple[list[dict], float, float]:
-        """
-        Get NVIDIA GPU information using pynvml.
+        """Get NVIDIA GPU information using pynvml.
 
         Returns:
             Tuple of (gpu_list, total_vram_gb, available_vram_gb)
+
         """
         if not NVIDIA_AVAILABLE:
             return [], 0.0, 0.0
@@ -222,11 +231,11 @@ class HostResources(BaseModel):
 
     @staticmethod
     def _get_amd_gpu_info() -> tuple[list[dict], float, float]:
-        """
-        Get AMD GPU information using amdsmi.
+        """Get AMD GPU information using amdsmi.
 
         Returns:
             Tuple of (gpu_list, total_vram_gb, available_vram_gb)
+
         """
         if not AMD_AVAILABLE:
             return [], 0.0, 0.0
@@ -242,10 +251,12 @@ class HostResources(BaseModel):
                 try:
                     # Get memory information
                     mem_info = amdsmi.amdsmi_get_gpu_memory_total(
-                        device, amdsmi.AmdSmiMemoryType.VRAM
+                        device,
+                        amdsmi.AmdSmiMemoryType.VRAM,
                     )
                     mem_usage = amdsmi.amdsmi_get_gpu_memory_usage(
-                        device, amdsmi.AmdSmiMemoryType.VRAM
+                        device,
+                        amdsmi.AmdSmiMemoryType.VRAM,
                     )
 
                     total_mb = mem_info / (1024**2)

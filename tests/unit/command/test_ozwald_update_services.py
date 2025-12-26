@@ -65,7 +65,7 @@ class TestOzwaldUpdateServices:
                 "service": "srv",
                 "variety": None,
                 "profile": "GPU",
-            }
+            },
         ]
 
     def test_varieties_only_second_token_is_variety(self, mocker):
@@ -83,7 +83,7 @@ class TestOzwaldUpdateServices:
                 "service": "srv",
                 "variety": "A",
                 "profile": None,
-            }
+            },
         ]
 
     def test_both_sets_token_matches_neither_fails_fast(self, mocker):

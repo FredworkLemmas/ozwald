@@ -19,17 +19,14 @@ from src.util.active_services_cache import ActiveServicesCache, WriteCollision
 @pytest.fixture
 def cache_default() -> Cache:
     """Provide a `Cache` model with empty parameters to exercise defaults."""
-
     return Cache(type="redis", parameters={})
 
 
 @pytest.fixture
 def cache_with_params() -> Cache:
-    """
-    Provide a `Cache` model with explicit Redis parameters (including
+    """Provide a `Cache` model with explicit Redis parameters (including
     password).
     """
-
     return Cache(
         type="redis",
         parameters={
@@ -43,35 +40,32 @@ def cache_with_params() -> Cache:
 
 @pytest.fixture
 def redis_mock(mocker):
-    """
-    Patch `redis.Redis` used by `ActiveServicesCache` and return the mock
+    """Patch `redis.Redis` used by `ActiveServicesCache` and return the mock
     class.
 
     The returned value is the mocked constructor (i.e., the class), whose
     `.return_value` represents the client instance used by the cache class.
     """
-
     return mocker.patch("src.util.active_services_cache.redis.Redis")
 
 
 @pytest.fixture
 def active_cache_default(
-    cache_default: Cache, redis_mock
+    cache_default: Cache,
+    redis_mock,
 ) -> ActiveServicesCache:
-    """
-    Create an `ActiveServicesCache` bound to the mocked Redis with
+    """Create an `ActiveServicesCache` bound to the mocked Redis with
     default params.
     """
-
     return ActiveServicesCache(cache_default)
 
 
 @pytest.fixture
 def active_cache_params(
-    cache_with_params: Cache, redis_mock
+    cache_with_params: Cache,
+    redis_mock,
 ) -> ActiveServicesCache:
     """Create an `ActiveServicesCache` with explicit Redis parameters."""
-
     return ActiveServicesCache(cache_with_params)
 
 
@@ -79,13 +73,14 @@ class TestInitialization:
     """Initialization and Redis client parameter handling."""
 
     def test_initializes_with_defaults(
-        self, cache_default: Cache, redis_mock, active_cache_default
+        self,
+        cache_default: Cache,
+        redis_mock,
+        active_cache_default,
     ):
-        """
-        It constructs Redis with default host/port/db and
+        """It constructs Redis with default host/port/db and
         decode_responses=True.
         """
-
         redis_mock.assert_called_once_with(
             host="localhost",
             port=6379,
@@ -95,10 +90,12 @@ class TestInitialization:
         )
 
     def test_initializes_with_explicit_parameters(
-        self, cache_with_params: Cache, redis_mock, active_cache_params
+        self,
+        cache_with_params: Cache,
+        redis_mock,
+        active_cache_params,
     ):
         """It forwards parameters from the `Cache` model to the Redis client."""
-
         params = cache_with_params.parameters or {}
         redis_mock.assert_called_once_with(
             host=params.get("host"),
@@ -113,13 +110,13 @@ class TestSetServices:
     """Behavior of `set_services` regarding locks and serialization."""
 
     def test_sets_services_when_lock_acquired(
-        self, active_cache_default: ActiveServicesCache, redis_mock
+        self,
+        active_cache_default: ActiveServicesCache,
+        redis_mock,
     ):
-        """
-        When the lock is acquired, services are JSON-encoded and stored,
+        """When the lock is acquired, services are JSON-encoded and stored,
         and the lock is released.
         """
-
         redis_client = redis_mock.return_value
         lock = redis_client.lock.return_value
         lock.acquire.return_value = True
@@ -147,7 +144,7 @@ class TestSetServices:
         assert lock.release.called, "Lock should be released in finally block"
 
         # Verify stored JSON payload
-        args, kwargs = redis_client.set.call_args
+        args, _ = redis_client.set.call_args
         assert args[0] == active_cache_default.CACHE_KEY
         stored_json = args[1]
         decoded = json.loads(stored_json)
@@ -158,13 +155,13 @@ class TestSetServices:
         ]
 
     def test_raises_write_collision_when_lock_not_acquired(
-        self, active_cache_default: ActiveServicesCache, redis_mock
+        self,
+        active_cache_default: ActiveServicesCache,
+        redis_mock,
     ):
-        """
-        If the lock cannot be acquired, `WriteCollision` is raised and
+        """If the lock cannot be acquired, `WriteCollision` is raised and
         nothing is written.
         """
-
         redis_client = redis_mock.return_value
         lock = redis_client.lock.return_value
         lock.acquire.return_value = False
@@ -177,13 +174,14 @@ class TestSetServices:
         assert not lock.release.called
 
     def test_wraps_redis_lock_error_as_runtime_error(
-        self, active_cache_default: ActiveServicesCache, redis_mock, mocker
+        self,
+        active_cache_default: ActiveServicesCache,
+        redis_mock,
+        mocker,
     ):
-        """
-        If Redis lock operations raise `LockError`, it is wrapped as
+        """If Redis lock operations raise `LockError`, it is wrapped as
         `RuntimeError`.
         """
-
         # Reconfigure the lock to raise redis.exceptions.LockError on acquire
         from redis.exceptions import LockError
 
@@ -202,10 +200,11 @@ class TestGetServices:
     """Behavior of `get_services` data retrieval and decoding."""
 
     def test_returns_empty_list_when_no_data(
-        self, active_cache_default: ActiveServicesCache, redis_mock
+        self,
+        active_cache_default: ActiveServicesCache,
+        redis_mock,
     ):
         """If the cache key is absent, an empty list is returned."""
-
         redis_client = redis_mock.return_value
         redis_client.get.return_value = None
 
@@ -213,13 +212,13 @@ class TestGetServices:
         assert result == []
 
     def test_returns_service_information_objects(
-        self, active_cache_default: ActiveServicesCache, redis_mock
+        self,
+        active_cache_default: ActiveServicesCache,
+        redis_mock,
     ):
-        """
-        It decodes JSON and returns a list of `ServiceInformation`
+        """It decodes JSON and returns a list of `ServiceInformation`
         objects.
         """
-
         services = [
             ServiceInformation(
                 name="svcA",

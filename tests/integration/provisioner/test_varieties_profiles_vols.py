@@ -18,6 +18,7 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
     # Ensure base tag exists
     check = subprocess.run(
         ["docker", "image", "inspect", image],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -32,31 +33,35 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
                 dockerfile_path,
                 ".",
             ],
+            check=False,
             capture_output=True,
             text=True,
         )
         if build.returncode != 0:
             raise RuntimeError(
-                f"Failed to build image {image}: {build.stderr or build.stdout}"
+                f"Failed to build image {image}: "
+                f"{build.stderr or build.stdout}",
             )
 
     # Ensure the runtime prefix tag expected by code is present
     prefixed = f"ozwald-{image}"
     check2 = subprocess.run(
         ["docker", "image", "inspect", prefixed],
+        check=False,
         capture_output=True,
         text=True,
     )
     if check2.returncode != 0:
         tag = subprocess.run(
             ["docker", "tag", image, prefixed],
+            check=False,
             capture_output=True,
             text=True,
         )
         if tag.returncode != 0:
             raise RuntimeError(
                 f"Failed to tag image {image} as {prefixed}: "
-                f"{tag.stderr or tag.stdout}"
+                f"{tag.stderr or tag.stdout}",
             )
 
 
@@ -85,6 +90,7 @@ def _container_running(name: str) -> bool:
             "--format",
             "{{.Names}}",
         ],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -94,6 +100,7 @@ def _container_running(name: str) -> bool:
 def _container_logs(name: str, tail: int = 200) -> str:
     result = subprocess.run(
         ["docker", "logs", "--tail", str(tail), name],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -103,6 +110,7 @@ def _container_logs(name: str, tail: int = 200) -> str:
 def _exec_in_container(name: str, cmd: str) -> int:
     res = subprocess.run(
         ["docker", "exec", name, "sh", "-c", cmd],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -113,6 +121,7 @@ def _list_containers(prefix: str) -> list[str]:
     """List docker containers whose names start with the given prefix."""
     res = subprocess.run(
         ["docker", "ps", "-a", "--format", "{{.Names}}"],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -124,6 +133,7 @@ def _stop_container(name: str) -> None:
     """Force stop and remove a docker container by name."""
     subprocess.run(
         ["docker", "rm", "-f", name],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -171,8 +181,7 @@ def _update_services(service_updates: list[dict]):
 
 
 def _start_services_locally(service_updates: list[dict]):
-    """
-    Start services immediately in-process without relying on a background
+    """Start services immediately in-process without relying on a background
     daemon. This avoids interference from any externally running
     provisioner that may be using a different settings file.
     """
@@ -234,7 +243,7 @@ def temp_settings_file(tmp_path_factory):
                         "name": "solar_system",
                         "target": "/solar_system",
                         "read_only": True,
-                    }
+                    },
                 ],
                 "varieties": {
                     "A": {
@@ -246,7 +255,7 @@ def temp_settings_file(tmp_path_factory):
                                 "name": "solar_extras",
                                 "target": "/extras",
                                 "read_only": False,
-                            }
+                            },
                         ],
                     },
                     "B": {
@@ -255,8 +264,8 @@ def temp_settings_file(tmp_path_factory):
                                 "name": "solar_system",
                                 "target": "/solar_system",
                                 "read_only": False,
-                            }
-                        ]
+                            },
+                        ],
                     },
                 },
                 "profiles": {
@@ -278,9 +287,9 @@ def temp_settings_file(tmp_path_factory):
                                 "read_only": False,
                             },
                         ],
-                    }
+                    },
                 },
-            }
+            },
         ],
         "provisioners": [
             {
@@ -292,13 +301,14 @@ def temp_settings_file(tmp_path_factory):
                         "host": "localhost",
                         "port": int(
                             os.environ.get(
-                                "OZWALD_PROVISIONER_REDIS_PORT", 6479
-                            )
+                                "OZWALD_PROVISIONER_REDIS_PORT",
+                                6479,
+                            ),
                         ),
                         "db": 14,
                     },
                 },
-            }
+            },
         ],
         "volumes": {
             "solar_system": {
@@ -386,7 +396,7 @@ class TestVarietiesProfilesVolumes:
                 "variety": "A",
                 "profile": None,
                 "status": ServiceStatus.STARTING,
-            }
+            },
         ]
         _start_services_locally(body)
         container = f"service-{name}"
@@ -409,7 +419,7 @@ class TestVarietiesProfilesVolumes:
                 "variety": "B",
                 "profile": None,
                 "status": ServiceStatus.STARTING,
-            }
+            },
         ]
         _start_services_locally(body)
         container = f"service-{name}"
@@ -418,7 +428,9 @@ class TestVarietiesProfilesVolumes:
         assert rc == 0
 
     def test_profile_overrides_variety_and_unions(
-        self, docker_prereq, env_setup
+        self,
+        docker_prereq,
+        env_setup,
     ):
         """It should overwrite base and variety volumes with profile volumes."""
         name = f"it-vp-BP-{int(time.time()) % 100000}"
@@ -430,7 +442,7 @@ class TestVarietiesProfilesVolumes:
                 "variety": "B",
                 "profile": "P",
                 "status": ServiceStatus.STARTING,
-            }
+            },
         ]
         _start_services_locally(body)
         container = f"service-{name}"

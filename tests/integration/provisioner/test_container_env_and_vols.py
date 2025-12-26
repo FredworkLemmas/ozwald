@@ -22,6 +22,7 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
     """Ensure the Docker image exists locally; build if missing."""
     check = subprocess.run(
         ["docker", "image", "inspect", image],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -30,12 +31,13 @@ def _ensure_image(image: str, dockerfile_path: str) -> None:
 
     build = subprocess.run(
         ["docker", "build", "-t", image, "-f", dockerfile_path, "."],
+        check=False,
         capture_output=True,
         text=True,
     )
     if build.returncode != 0:
         raise RuntimeError(
-            f"Failed to build image {{image}}: {build.stderr or build.stdout}"
+            f"Failed to build image {{image}}: {build.stderr or build.stdout}",
         )
 
 
@@ -66,6 +68,7 @@ def _container_running(name: str) -> bool:
             "--format",
             "{{.Names}}",
         ],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -75,6 +78,7 @@ def _container_running(name: str) -> bool:
 def _container_logs(name: str, tail: int = 200) -> str:
     result = subprocess.run(
         ["docker", "logs", "--tail", str(tail), name],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -98,7 +102,7 @@ def _wait_for(
         time.sleep(interval)
     if last_err:
         raise AssertionError(
-            f"Timed out waiting for {description}: last error: {last_err}"
+            f"Timed out waiting for {description}: last error: {last_err}",
         )
     raise AssertionError(f"Timed out waiting for {description}")
 
@@ -110,7 +114,7 @@ def _wait_for(
 def docker_prereq():
     if not _docker_available():
         pytest.skip(
-            "Docker CLI not available; skipping env/vols integration test"
+            "Docker CLI not available; skipping env/vols integration test",
         )
 
     repo_root = Path(__file__).resolve().parents[3]
@@ -221,16 +225,18 @@ def stop_started_services_after_test(started_instances):
             # Last resort to avoid lingering containers
             subprocess.run(
                 ["docker", "rm", "-f", cname],
+                check=False,
                 capture_output=True,
                 text=True,
             )
 
 
 def test_container_env_and_volumes(
-    docker_prereq, env_for_daemon, started_instances
+    docker_prereq,
+    env_for_daemon,
+    started_instances,
 ):
-    """
-    Verify that the test_env_and_vols container runs with the
+    """Verify that the test_env_and_vols container runs with the
     configured environment and that the generated solar_system
     directory is mounted at /solar_system inside the container.
     """
@@ -242,7 +248,7 @@ def test_container_env_and_volumes(
             "service": svc_name,
             "profile": None,
             "status": ServiceStatus.STARTING,
-        }
+        },
     ]
     _update_services(body)
 

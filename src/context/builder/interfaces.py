@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -22,5 +24,5 @@ class ContextBuilder(ABC):
     @property
     def contribution(
         self,
-    ) -> str | list[str] | "ContextBuilder" | list["ContextBuilder"]:
+    ) -> str | list[str] | ContextBuilder | list[ContextBuilder]:
         pass

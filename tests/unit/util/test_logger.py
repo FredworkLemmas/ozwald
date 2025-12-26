@@ -7,6 +7,7 @@ These tests verify that `get_logger`:
 - respects the current `sys.stdout` stream (using the `mocker` fixture).
 """
 
+import contextlib
 import io
 import logging
 import sys
@@ -25,7 +26,6 @@ def logger_name() -> str:
     Using a unique name avoids interference between tests that rely on the
     logging module's global logger registry.
     """
-
     return f"tests.util.logger.{uuid4()}"
 
 
@@ -37,7 +37,6 @@ def prepare_clean_logger() -> Callable[[str], logging.Logger]:
     handlers for that logger so tests start from a known state, and registers
     the logger for cleanup once the test completes.
     """
-
     created: list[logging.Logger] = []
 
     def _factory(name: str) -> logging.Logger:
@@ -45,10 +44,8 @@ def prepare_clean_logger() -> Callable[[str], logging.Logger]:
         # Ensure no pre-existing handlers remain
         for h in list(logger.handlers):
             logger.removeHandler(h)
-            try:
+            with contextlib.suppress(Exception):
                 h.close()
-            except Exception:
-                pass
         created.append(logger)
         return logger
 
@@ -58,10 +55,8 @@ def prepare_clean_logger() -> Callable[[str], logging.Logger]:
     for logger in created:
         for h in list(logger.handlers):
             logger.removeHandler(h)
-            try:
+            with contextlib.suppress(Exception):
                 h.close()
-            except Exception:
-                pass
 
 
 def _get_format_string(formatter: logging.Formatter) -> str:
@@ -70,7 +65,6 @@ def _get_format_string(formatter: logging.Formatter) -> str:
     Supports both the legacy `._fmt` and the newer `. _style._fmt` attribute
     used by Python's logging implementation, for cross-version robustness.
     """
-
     if hasattr(formatter, "_style") and hasattr(formatter._style, "_fmt"):
         return formatter._style._fmt  # type: ignore[attr-defined]
     if hasattr(formatter, "_fmt"):
@@ -87,11 +81,9 @@ class TestGetLogger:
         logger_name: str,
         prepare_clean_logger: Callable[[str], logging.Logger],
     ) -> None:
-        """
-        It returns a logger with the given name, a StreamHandler to stdout,
+        """It returns a logger with the given name, a StreamHandler to stdout,
         and INFO level.
         """
-
         prepare_clean_logger(logger_name)
         logger = get_logger(logger_name)
 
@@ -112,10 +104,9 @@ class TestGetLogger:
         logger_name: str,
         prepare_clean_logger: Callable[[str], logging.Logger],
     ) -> None:
+        """Calling `get_logger` multiple times does not add duplicate
+        handlers.
         """
-        Calling `get_logger` multiple times does not add duplicate handlers.
-        """
-
         prepare_clean_logger(logger_name)
         logger1 = get_logger(logger_name)
         handlers_after_first = list(logger1.handlers)
@@ -133,10 +124,7 @@ class TestGetLogger:
         logger_name: str,
         prepare_clean_logger: Callable[[str], logging.Logger],
     ) -> None:
-        """
-        The attached handler uses the expected format and date format.
-        """
-
+        """The attached handler uses the expected format and date format."""
         prepare_clean_logger(logger_name)
         logger = get_logger(logger_name)
         handler = logger.handlers[0]
@@ -154,11 +142,9 @@ class TestGetLogger:
         prepare_clean_logger: Callable[[str], logging.Logger],
         mocker,
     ) -> None:
-        """
-        The StreamHandler binds to the current `sys.stdout` (verified using
+        """The StreamHandler binds to the current `sys.stdout` (verified using
         the mocker fixture).
         """
-
         prepare_clean_logger(logger_name)
 
         # Replace sys.stdout with a StringIO using pytest-mock's `mocker`

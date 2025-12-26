@@ -20,17 +20,16 @@ logger = get_logger(__name__)
 
 
 class ConfigReader:
-    """
-    Reads and parses Ozwald configuration files, hydrating Pydantic models
+    """Reads and parses Ozwald configuration files, hydrating Pydantic models
     from YAML configuration.
     """
 
     def __init__(self, config_path: str):
-        """
-        Initialize ConfigReader with a path to a YAML configuration file.
+        """Initialize ConfigReader with a path to a YAML configuration file.
 
         Args:
             config_path: Path to the YAML configuration file
+
         """
         self.config_path = Path(config_path)
         self._raw_config = None
@@ -50,15 +49,15 @@ class ConfigReader:
         """Load YAML configuration from file."""
         if not self.config_path.exists():
             raise FileNotFoundError(
-                f"Configuration file not found: {self.config_path}"
+                f"Configuration file not found: {self.config_path}",
             )
 
-        with open(self.config_path) as f:
+        with Path(self.config_path).open() as f:
             self._raw_config = yaml.safe_load(f)
 
         if not self._raw_config:
             raise ValueError(
-                f"Empty or invalid YAML configuration: {self.config_path}"
+                f"Empty or invalid YAML configuration: {self.config_path}",
             )
 
     def _parse_config(self) -> None:
@@ -121,9 +120,9 @@ class ConfigReader:
                 if not src:
                     raise ValueError(f"Volume {name}: bind requires 'source'")
                 # require absolute after substitution
-                if not os.path.isabs(src):
+                if not Path(src).is_absolute():
                     raise ValueError(
-                        f"Volume {name}: bind source must be absolute: {src}"
+                        f"Volume {name}: bind source must be absolute: {src}",
                     )
                 entry["source"] = os.path.abspath(src)
             elif vtype == "nfs":
@@ -131,7 +130,7 @@ class ConfigReader:
                 source = spec.get("path") or spec.get("source") or ""
                 if not server or not source:
                     raise ValueError(
-                        f"Volume {name}: nfs requires 'server' and 'path'"
+                        f"Volume {name}: nfs requires 'server' and 'path'",
                     )
                 entry["server"] = server
                 entry["path"] = source
@@ -163,7 +162,7 @@ class ConfigReader:
                 if "name" not in resource_data:
                     raise KeyError(
                         f"Resource at index {j} for host index {i} "
-                        "is missing 'name'"
+                        "is missing 'name'",
                     )
                 resource = Resource(
                     name=resource_data["name"],
@@ -172,7 +171,7 @@ class ConfigReader:
                     value=resource_data["value"],
                     related_resources=resource_data.get("related_resources"),
                     extended_attributes=resource_data.get(
-                        "extended_attributes"
+                        "extended_attributes",
                     ),
                 )
                 resources.append(resource)
@@ -183,7 +182,9 @@ class ConfigReader:
                 raise KeyError(f"Host entry at index {i} is missing 'ip'")
 
             host = Host(
-                name=host_data["name"], ip=host_data["ip"], resources=resources
+                name=host_data["name"],
+                ip=host_data["ip"],
+                resources=resources,
             )
             self.hosts.append(host)
 
@@ -239,7 +240,7 @@ class ConfigReader:
                 # Normalize profile-specific volumes (no implicit inherit);
                 # merging happens at runtime by target precedence.
                 prof_vols = self._normalize_service_volumes(
-                    profile_data.get("volumes", [])
+                    profile_data.get("volumes", []),
                 )
 
                 profile = ServiceDefinitionProfile(
@@ -249,7 +250,8 @@ class ConfigReader:
                     depends_on=depends_on,
                     command=profile_data.get("command", parent_command),
                     entrypoint=profile_data.get(
-                        "entrypoint", parent_entrypoint
+                        "entrypoint",
+                        parent_entrypoint,
                     ),
                     env_file=env_file,
                     environment=env,
@@ -264,7 +266,7 @@ class ConfigReader:
             default_image_from_variety = None
             for variety_name, variety_data in varieties_data.items():
                 v_vols = self._normalize_service_volumes(
-                    variety_data.get("volumes", [])
+                    variety_data.get("volumes", []),
                 )
                 v = ServiceDefinitionVariety(
                     image=variety_data.get("image", parent_image)
@@ -274,7 +276,8 @@ class ConfigReader:
                     or parent_depends_on,
                     command=variety_data.get("command", parent_command),
                     entrypoint=variety_data.get(
-                        "entrypoint", parent_entrypoint
+                        "entrypoint",
+                        parent_entrypoint,
                     ),
                     env_file=variety_data.get("env_file", [])
                     or parent_env_file,
@@ -294,7 +297,7 @@ class ConfigReader:
 
             # Normalize and attach volumes for service (may use top-level)
             svc_vols = self._normalize_service_volumes(
-                service_data.get("volumes", [])
+                service_data.get("volumes", []),
             )
 
             service_def = ServiceDefinition(
@@ -331,11 +334,11 @@ class ConfigReader:
                 ro = bool(entry.get("read_only", False))
                 if not name or not target:
                     raise ValueError(
-                        "Service volume mapping requires name and target"
+                        "Service volume mapping requires name and target",
                     )
-                if not os.path.isabs(target):
+                if not Path(target).is_absolute():
                     raise ValueError(
-                        f"Volume target must be absolute: {target}"
+                        f"Volume target must be absolute: {target}",
                     )
                 spec = self.volumes.get(name)
                 if not spec:
@@ -355,7 +358,7 @@ class ConfigReader:
                 elif vtype == "tmpfs":
                     # For now, skip; could render --tmpfs later
                     raise ValueError(
-                        "tmpfs volumes are not mountable via -v here"
+                        "tmpfs volumes are not mountable via -v here",
                     )
             elif isinstance(entry, str):
                 # Substitute tokens in bind host segment if present
@@ -366,7 +369,7 @@ class ConfigReader:
                     if len(parts) < 2:
                         raise ValueError(f"Invalid bind volume string: {entry}")
                     host = parts[0]
-                    if not os.path.isabs(host):
+                    if not Path(host).is_absolute():
                         raise ValueError(f"Bind host must be absolute: {host}")
                     vols.append(s)
                 else:
@@ -376,13 +379,13 @@ class ConfigReader:
                     name = parts[0]
                     target = ":".join(parts[1:2])
                     mode = (":" + parts[2]) if len(parts) > 2 else ""
-                    if not os.path.isabs(target):
+                    if not Path(target).is_absolute():
                         raise ValueError(
-                            f"Volume target must be absolute: {target}"
+                            f"Volume target must be absolute: {target}",
                         )
                     if name not in self.volumes:
                         raise ValueError(
-                            f"Unknown volume name referenced: {name}"
+                            f"Unknown volume name referenced: {name}",
                         )
                     spec = self.volumes[name]
                     if spec.get("type") == "bind":
@@ -394,13 +397,14 @@ class ConfigReader:
                         vols.append(f"{name}:{target}{mode or ':rw'}")
                     elif spec.get("type") == "nfs":
                         mount_root = os.environ.get(
-                            "OZWALD_NFS_MOUNTS", "/exports"
+                            "OZWALD_NFS_MOUNTS",
+                            "/exports",
                         )
                         host = os.path.join(mount_root, name)
                         vols.append(f"{host}:{target}{mode or ':rw'}")
                     else:
                         raise ValueError(
-                            f"Unsupported volume type for shorthand: {name}"
+                            f"Unsupported volume type for shorthand: {name}",
                         )
             else:
                 raise ValueError("Unsupported volume entry type")
@@ -415,7 +419,7 @@ class ConfigReader:
             if prov_cache_data:
                 if "type" not in prov_cache_data:
                     raise KeyError(
-                        f"Cache for provisioner at index {i} is missing 'type'"
+                        f"Cache for provisioner at index {i} is missing 'type'",
                     )
                 prov_cache = Cache(
                     type=prov_cache_data["type"],
@@ -424,11 +428,11 @@ class ConfigReader:
 
             if "name" not in prov_data:
                 raise KeyError(
-                    f"Provisioner entry at index {i} is missing 'name'"
+                    f"Provisioner entry at index {i} is missing 'name'",
                 )
             if "host" not in prov_data:
                 raise KeyError(
-                    f"Provisioner entry at index {i} is missing 'host'"
+                    f"Provisioner entry at index {i} is missing 'host'",
                 )
 
             provisioner = Provisioner(
@@ -446,14 +450,15 @@ class ConfigReader:
         return None
 
     def get_service_by_name(
-        self, service_name: str
+        self,
+        service_name: str,
     ) -> Optional[ServiceDefinition]:
         """Get a service definition by service_name."""
         result = None
         for service in self.services:
             if service.service_name == service_name:
                 result = service
-        logger.info(f"get_service_by_name{service_name} -> {result}")
+        logger.info("get_service_by_name%s -> %s", service_name, result)
         return result
 
     # No action/mode lookups in simplified schema.

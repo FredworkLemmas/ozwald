@@ -4,7 +4,9 @@ from invocate import task
 def _ensure_local_registry_data_exists(c):
     """Create the volume for the local registry data"""
     result = c.run(
-        "docker volume ls -q -f name=^registry_data$", hide=True, warn=True
+        "docker volume ls -q -f name=^registry_data$",
+        hide=True,
+        warn=True,
     )
     if not result.stdout.strip():
         c.run("docker volume create registry_data")
@@ -12,7 +14,7 @@ def _ensure_local_registry_data_exists(c):
 
 @task(namespace="env.host", name="start-docker-registry")
 def start_docker_registry(c):
-    """starts the local docker registry"""
+    """Starts the local docker registry"""
     _ensure_local_registry_data_exists(c)
 
     # Check if container is already running
@@ -31,5 +33,5 @@ def start_docker_registry(c):
         c.run(
             "docker run -d -p 5000:5000 --restart=always "
             " -v registry_data:/var/lib/registry "
-            "--name registry registry:2"
+            "--name registry registry:2",
         )

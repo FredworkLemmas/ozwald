@@ -1,5 +1,4 @@
-"""
-Test suite for the Provisioner FastAPI application in
+"""Test suite for the Provisioner FastAPI application in
 `src/api/provisioner.py`.
 
 These tests verify:
@@ -42,7 +41,6 @@ def system_key(monkeypatch: pytest.MonkeyPatch) -> str:
     Returns the configured key so tests can construct an Authorization header
     without relying on magic literals.
     """
-
     key = "test-system-key"
     monkeypatch.setenv("OZWALD_SYSTEM_KEY", key)
     return key
@@ -54,7 +52,6 @@ def client(system_key: str) -> TestClient:  # noqa: ARG001 (system_key ensures e
 
     Depends on `system_key` so that protected endpoints can be exercised easily.
     """
-
     return TestClient(app)
 
 
@@ -65,7 +62,6 @@ def auth_header(system_key: str) -> dict[str, str]:
     Avoids hardcoding bearer tokens; assertions can compare directly against
     this fixture's value if needed.
     """
-
     return {"Authorization": f"Bearer {system_key}"}
 
 
@@ -77,23 +73,22 @@ def auth_header(system_key: str) -> dict[str, str]:
 class TestHealth:
     def test_health_check_requires_no_auth(self, client: TestClient) -> None:
         """Health endpoint should be accessible without any authentication."""
-
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "healthy"}
 
 
 class TestConfiguredServices:
-    """
-    Tests for `/srv/services/configured/` endpoint, including auth
+    """Tests for `/srv/services/configured/` endpoint, including auth
     behavior.
     """
 
     def test_auth_fails_when_env_key_missing(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Return 500 when `OZWALD_SYSTEM_KEY` is not configured."""
-
         monkeypatch.delenv("OZWALD_SYSTEM_KEY", raising=False)
         resp = client.get("/srv/services/configured/")
         assert resp.status_code == 500
@@ -101,10 +96,11 @@ class TestConfiguredServices:
         assert body["detail"] == "OZWALD_SYSTEM_KEY not configured"
 
     def test_auth_rejects_invalid_token(
-        self, client: TestClient, system_key: str
-    ) -> None:  # noqa: ARG001
+        self,
+        client: TestClient,
+        system_key: str,
+    ) -> None:
         """Return 401 when the bearer token is invalid."""
-
         headers = {"Authorization": "Bearer wrong-token"}
         resp = client.get("/srv/services/configured/", headers=headers)
         assert resp.status_code == 401
@@ -112,24 +108,31 @@ class TestConfiguredServices:
         assert body["detail"] == "Invalid authentication credentials"
 
     def test_get_configured_services_returns_list(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
         """Return the list from provisioner.get_configured_services()."""
-
         # Prepare mock return value
         defs: List[ServiceDefinition] = [
             ServiceDefinition(
-                service_name="svc-a", type=ServiceType.API, description="A"
+                service_name="svc-a",
+                type=ServiceType.API,
+                description="A",
             ),
             ServiceDefinition(
-                service_name="svc-b", type=ServiceType.SQLITE, description=None
+                service_name="svc-b",
+                type=ServiceType.SQLITE,
+                description=None,
             ),
         ]
 
         prov = mocker.Mock()
         prov.get_configured_services.return_value = defs
         mocker.patch(
-            "src.api.provisioner.SystemProvisioner.singleton", return_value=prov
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
         )
 
         resp = client.get("/srv/services/configured/", headers=auth_header)
@@ -140,13 +143,14 @@ class TestConfiguredServices:
 
 class TestActiveServices:
     def test_get_active_services_returns_list(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        `/srv/services/active/` returns the list from
+        """`/srv/services/active/` returns the list from
         `provisioner.get_active_services()`.
         """
-
         active: List[Service] = [
             Service(
                 name="inst-1",
@@ -160,7 +164,8 @@ class TestActiveServices:
         prov = mocker.Mock()
         prov.get_active_services.return_value = active
         mocker.patch(
-            "src.api.provisioner.SystemProvisioner.singleton", return_value=prov
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
         )
 
         resp = client.get("/srv/services/active/", headers=auth_header)
@@ -171,13 +176,14 @@ class TestActiveServices:
 
 class TestUpdateServices:
     def test_update_services_accepts_and_delegates(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        `/srv/services/update/` responds 202 and calls
+        """`/srv/services/update/` responds 202 and calls
         `provisioner.update_services(...)` with parsed models.
         """
-
         # Payload to send (as JSON)
         payload = [
             {
@@ -198,11 +204,14 @@ class TestUpdateServices:
 
         prov = mocker.Mock()
         mocker.patch(
-            "src.api.provisioner.SystemProvisioner.singleton", return_value=prov
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
         )
 
         resp = client.post(
-            "/srv/services/update/", json=payload, headers=auth_header
+            "/srv/services/update/",
+            json=payload,
+            headers=auth_header,
         )
         assert resp.status_code == 202
         assert resp.json()["status"] == "accepted"
@@ -223,13 +232,14 @@ class TestUpdateServices:
 
 class TestUpdateServicesEmptyList:
     def test_empty_list_delegates_and_returns_202(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        Posting an empty list should be accepted (202) and delegated to
+        """Posting an empty list should be accepted (202) and delegated to
         the provisioner with an empty list of ServiceInformation.
         """
-
         prov = mocker.Mock()
         prov.update_services.return_value = True
         mocker.patch(
@@ -238,7 +248,9 @@ class TestUpdateServicesEmptyList:
         )
 
         resp = client.post(
-            "/srv/services/active/update/", json=[], headers=auth_header
+            "/srv/services/active/update/",
+            json=[],
+            headers=auth_header,
         )
         assert resp.status_code == 202
         assert resp.json()["status"] == "accepted"
@@ -249,13 +261,14 @@ class TestUpdateServicesEmptyList:
         assert arg_list == []
 
     def test_empty_list_persist_failure_yields_503(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        If the provisioner returns False (persistence failure), the API
+        """If the provisioner returns False (persistence failure), the API
         should return 503.
         """
-
         prov = mocker.Mock()
         prov.update_services.return_value = False
         mocker.patch(
@@ -264,19 +277,22 @@ class TestUpdateServicesEmptyList:
         )
 
         resp = client.post(
-            "/srv/services/active/update/", json=[], headers=auth_header
+            "/srv/services/active/update/",
+            json=[],
+            headers=auth_header,
         )
         assert resp.status_code == 503
         assert "persist" in resp.json().get("detail", "").lower()
 
     def test_empty_list_legacy_endpoint_alias(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        The legacy endpoint should behave the same as the primary one
+        """The legacy endpoint should behave the same as the primary one
         when passed an empty list.
         """
-
         prov = mocker.Mock()
         prov.update_services.return_value = True
         mocker.patch(
@@ -285,20 +301,23 @@ class TestUpdateServicesEmptyList:
         )
 
         resp = client.post(
-            "/srv/services/update/", json=[], headers=auth_header
+            "/srv/services/update/",
+            json=[],
+            headers=auth_header,
         )
         assert resp.status_code == 202
         assert resp.json()["status"] == "accepted"
         prov.update_services.assert_called_once()
 
     def test_update_services_value_error_yields_400(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        A ValueError raised by the provisioner should be translated to a
+        """A ValueError raised by the provisioner should be translated to a
         400 response by the API.
         """
-
         prov = mocker.Mock()
         prov.update_services.side_effect = ValueError("not found")
         mocker.patch(
@@ -311,7 +330,7 @@ class TestUpdateServicesEmptyList:
                 "name": "inst-x",
                 "service": "unknown",
                 "profile": "default",
-            }
+            },
         ]
         resp = client.post(
             "/srv/services/active/update/",
@@ -324,13 +343,14 @@ class TestUpdateServicesEmptyList:
 
 class TestAvailableResources:
     def test_get_available_resources_returns_list(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        `/srv/resources/available/` returns list from
+        """`/srv/resources/available/` returns list from
         `provisioner.get_available_resources()`.
         """
-
         resources: List[Resource] = [
             Resource(
                 name="cpu",
@@ -353,7 +373,8 @@ class TestAvailableResources:
         prov = mocker.Mock()
         prov.get_available_resources.return_value = resources
         mocker.patch(
-            "src.api.provisioner.SystemProvisioner.singleton", return_value=prov
+            "src.api.provisioner.SystemProvisioner.singleton",
+            return_value=prov,
         )
 
         resp = client.get("/srv/resources/available/", headers=auth_header)
@@ -364,13 +385,14 @@ class TestAvailableResources:
 
 class TestHostResources:
     def test_get_host_resources_uses_inspect_host(
-        self, client: TestClient, auth_header: dict[str, str], mocker
+        self,
+        client: TestClient,
+        auth_header: dict[str, str],
+        mocker,
     ) -> None:
-        """
-        `/srv/host/resources` calls `HostResources.inspect_host()` and
+        """`/srv/host/resources` calls `HostResources.inspect_host()` and
         returns its model as JSON.
         """
-
         model = HostResources(
             total_cpu_cores=16,
             available_cpu_cores=12,
@@ -387,12 +409,13 @@ class TestHostResources:
                     available_vram=20000,
                     description="Fake GPU",
                     pci_device_description="0000:01:00.0",
-                )
+                ),
             ],
         )
 
         spy = mocker.patch(
-            "src.api.provisioner.HostResources.inspect_host", return_value=model
+            "src.api.provisioner.HostResources.inspect_host",
+            return_value=model,
         )
 
         resp = client.get("/srv/host/resources", headers=auth_header)

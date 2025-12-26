@@ -1,3 +1,1 @@
-"""
-the context module provides all things related to context.
-"""
+"""the context module provides all things related to context."""

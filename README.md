@@ -13,8 +13,8 @@ While this release concentrates on provisioning, Ozwald is designed to evolve in
 Key ideas
 ---------
 
-- A clear model for describing services using “varieties” (e.g., nvidia, amdgpu, cpu-only) and “profiles” (named parameter sets like fast-gpu, no-gpu, etc.).
-- A provisioner API exposing configured and active services, host resources, and a small profiling queue.
+ - A clear model for describing services using “varieties” (e.g., nvidia, amdgpu, cpu-only) and “profiles” (named parameter sets like fast-gpu, no-gpu, etc.).
+- A provisioner API exposing configured and active services, host resources, and a small footprinting queue.
 - A CLI for standing up the provisioner and inspecting state locally.
 - Works best as a library dependency that your orchestrator or application depends on.
 
@@ -241,11 +241,11 @@ Endpoints:
 - `GET /srv/host/resources`
   - Returns a structured summary of CPU, RAM, GPU, and VRAM on the host.
 
-- `GET /srv/services/profile`
-  - Returns pending profiling requests.
+- `GET /srv/services/footprint`
+  - Returns pending footprinting requests.
 
-- `POST /srv/services/profile`
-  - Queues a profiling request while the system is unloaded.
+- `POST /srv/services/footprint`
+  - Queues a footprinting request while the system is unloaded.
 
 Example requests:
 
