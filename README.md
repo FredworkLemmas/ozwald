@@ -103,11 +103,16 @@ What this expresses:
 - varieties: Hardware-specific container images and environment toggles.
 - profiles: Named overlays for environment variables to switch runtime behavior.
 
-2) Set a system key
+2) Set the mandatory system key
 
-The provisioner API requires a bearer token for access. Set an environment variable before starting your stack:
+The `OZWALD_SYSTEM_KEY` environment variable is mandatory for both the
+Provisioner API and the Ozwald CLI. It contains a shared secret used for
+authentication. If this variable is not defined, both the server and the
+CLI will refuse to start or execute actions that interact with the API.
 
-```
+Set it before starting your stack or running the CLI:
+
+```bash
 export OZWALD_SYSTEM_KEY="your-long-random-token"
 ```
 

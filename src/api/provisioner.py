@@ -26,11 +26,22 @@ from orchestration.models import (
 from orchestration.provisioner import SystemProvisioner
 from util.active_services_cache import ActiveServicesCache
 from util.footprint_request_cache import FootprintRequestCache
+from util.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Startup validation: Ensure OZWALD_SYSTEM_KEY is defined
+if "OZWALD_SYSTEM_KEY" not in os.environ:
+    print(
+        "CRITICAL: OZWALD_SYSTEM_KEY environment variable is not defined. "
+        "The Provisioner API cannot start without this security key.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # Security setup
 # Use auto_error=False so that missing Authorization headers don't short-circuit
-# with a 403 before we can check environment configuration. This allows us to
-# return a 500 when OZWALD_SYSTEM_KEY is not configured, per requirements/tests.
+# with a 403. This allows us to log unauthorized attempts and return a 401.
 security = HTTPBearer(auto_error=False)
 
 
@@ -54,16 +65,11 @@ def verify_system_key(
     """
     expected_key = os.environ.get("OZWALD_SYSTEM_KEY")
 
-    # If the system key isn't configured, treat this as a server
-    # misconfiguration -> 500
-    if not expected_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OZWALD_SYSTEM_KEY not configured",
-        )
-
     # With a configured key, require a valid Bearer token
     if credentials is None or credentials.credentials != expected_key:
+        logger.warning(
+            "Unauthorized access attempt: invalid or missing bearer token",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

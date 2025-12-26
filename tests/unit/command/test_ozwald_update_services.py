@@ -96,3 +96,20 @@ class TestOzwaldUpdateServices:
         rc = ozwald.main(["update_services", "n1[srv][X]"])
         assert rc == 2
         assert spy.call_count == 0
+
+    def test_update_services_fails_without_system_key(
+        self,
+        mocker,
+        monkeypatch,
+    ):
+        from command import ozwald
+
+        monkeypatch.delenv("OZWALD_SYSTEM_KEY", raising=False)
+        # Ensure it doesn't even get to config reading or CLI call
+        spy_cfg = mocker.patch("command.ozwald.SystemConfigReader.singleton")
+        spy_cli = mocker.patch("command.ozwald.ucli.update_services")
+
+        rc = ozwald.main(["update_services", "--clear"])
+        assert rc == 1
+        assert spy_cfg.call_count == 0
+        assert spy_cli.call_count == 0

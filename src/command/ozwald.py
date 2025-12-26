@@ -20,7 +20,6 @@ from util import (
 
 load_dotenv()
 
-DEFAULT_OZWALD_SYSTEM_KEY = "jenny8675"
 DEFAULT_PROVISIONER_PORT = int(os.environ.get("OZWALD_PROVISIONER_PORT", 8000))
 DEFAULT_PROVISIONER_REDIS_PORT = int(
     os.environ.get("OZWALD_PROVISIONER_REDIS_PORT", 6479),
@@ -599,6 +598,25 @@ def main(argv: list[str] | None = None) -> int:
     # fallback to --api-port
     port_for_api = args.port or args.api_port
     restart = not args.no_restart
+
+    # Actions that require OZWALD_SYSTEM_KEY
+    api_actions = {
+        "list_configured_services",
+        "list_active_services",
+        "update_services",
+        "footprint_services",
+    }
+    if (
+        args.action in api_actions
+        or (args.action == "show_host_resources" and args.use_api)
+    ) and "OZWALD_SYSTEM_KEY" not in os.environ:
+        print(
+            "Error: OZWALD_SYSTEM_KEY environment variable is "
+            "not defined.\n"
+            "This key is required for authentication with the Provisioner "
+            "API.",
+        )
+        return 1
 
     if args.action == "start_provisioner":
         return action_start_provisioner(args.api_port, args.redis_port, restart)

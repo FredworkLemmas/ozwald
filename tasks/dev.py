@@ -14,7 +14,6 @@ from util import (
 
 load_dotenv()
 
-DEFAULT_OZWALD_SYSTEM_KEY = "jenny8675"
 DEFAULT_PROVISIONER_PORT = os.environ.get("OZWALD_PROVISIONER_PORT", 8000)
 DEFAULT_PROVISIONER_REDIS_PORT = os.environ.get(
     "OZWALD_PROVISIONER_REDIS_PORT",
@@ -375,7 +374,7 @@ def update_services(c, service, port=DEFAULT_PROVISIONER_PORT):
 
     # init vars
     url = f"http://localhost:{port}/srv/services/active/update/"
-    system_key = os.environ.get("OZWALD_SYSTEM_KEY", DEFAULT_OZWALD_SYSTEM_KEY)
+    system_key = os.environ.get("OZWALD_SYSTEM_KEY")
     headers = {"Authorization": f"Bearer {system_key}"}
 
     # Parse service definitions

@@ -8,11 +8,13 @@ from .http import (
     post as http_post,
 )
 
-DEFAULT_SYSTEM_KEY = "jenny8675"
-
 
 def _auth_headers(system_key: str | None = None) -> dict[str, str]:
-    key = system_key or os.environ.get("OZWALD_SYSTEM_KEY", DEFAULT_SYSTEM_KEY)
+    key = system_key or os.environ.get("OZWALD_SYSTEM_KEY")
+    if not key:
+        raise KeyError(
+            "OZWALD_SYSTEM_KEY environment variable is not defined",
+        )
     return {"Authorization": f"Bearer {key}"}
 
 

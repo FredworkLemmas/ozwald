@@ -151,7 +151,7 @@ def start_provisioner_api(
     config_mount = f"{src_mount} -v {config_path}:/etc/ozwald.yml "
 
     ensure_provisioner_network()
-    system_key = os.environ.get("OZWALD_SYSTEM_KEY", "jenny8675")
+    system_key = os.environ.get("OZWALD_SYSTEM_KEY")
     provisioner_name = os.environ.get(
         "DEFAULT_OZWALD_PROVISIONER",
         os.environ.get("OZWALD_PROVISIONER", "unconfigured"),
@@ -246,7 +246,7 @@ def start_provisioner_backend(
     config_mount = f"{src_mount} -v {config_path}:/etc/ozwald.yml "
 
     ensure_provisioner_network()
-    system_key = os.environ.get("OZWALD_SYSTEM_KEY", "jenny8675")
+    system_key = os.environ.get("OZWALD_SYSTEM_KEY")
     provisioner_name = os.environ.get(
         "DEFAULT_OZWALD_PROVISIONER",
         os.environ.get("OZWALD_PROVISIONER", "unconfigured"),

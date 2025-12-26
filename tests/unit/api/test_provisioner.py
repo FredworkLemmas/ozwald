@@ -88,24 +88,31 @@ class TestConfiguredServices:
         client: TestClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Return 500 when `OZWALD_SYSTEM_KEY` is not configured."""
+        """Return 401 when `OZWALD_SYSTEM_KEY` is not configured."""
         monkeypatch.delenv("OZWALD_SYSTEM_KEY", raising=False)
         resp = client.get("/srv/services/configured/")
-        assert resp.status_code == 500
+        assert resp.status_code == 401
         body = resp.json()
-        assert body["detail"] == "OZWALD_SYSTEM_KEY not configured"
+        assert body["detail"] == "Invalid authentication credentials"
 
     def test_auth_rejects_invalid_token(
         self,
         client: TestClient,
         system_key: str,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Return 401 when the bearer token is invalid."""
+        """Return 401 when the bearer token is invalid and log a warning."""
         headers = {"Authorization": "Bearer wrong-token"}
-        resp = client.get("/srv/services/configured/", headers=headers)
+        with caplog.at_level("WARNING"):
+            resp = client.get("/srv/services/configured/", headers=headers)
+
         assert resp.status_code == 401
         body = resp.json()
         assert body["detail"] == "Invalid authentication credentials"
+        assert (
+            "Unauthorized access attempt: invalid or missing bearer token"
+            in caplog.text
+        )
 
     def test_get_configured_services_returns_list(
         self,
