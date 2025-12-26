@@ -84,3 +84,21 @@ def update_services(
     if not isinstance(data, dict):
         raise ValueError("Unexpected response format for update_services")
     return data
+
+
+def footprint_services(
+    *,
+    port: int = 8000,
+    body: dict[str, Any],
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Call the provisioner footprint services endpoint."""
+    url = f"http://localhost:{port}/srv/services/footprint"
+    headers = _auth_headers(system_key)
+
+    resp = http_post(url, headers=headers, json=body)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected response format for footprint_services")
+    return data

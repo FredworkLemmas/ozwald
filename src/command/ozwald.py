@@ -370,6 +370,117 @@ def _parse_services_spec(spec: str) -> list[dict[str, Any]]:
     return result
 
 
+def _parse_footprint_spec_entry(
+    entry: str,
+    cfg: SystemConfigReader,
+) -> dict[str, Any]:
+    service_name = entry.split("[", 1)[0].strip()
+    if not service_name:
+        raise ValueError("Service name is required")
+
+    tokens = [t.strip() for t in _bracket_tokens(entry)]
+    svc_def = cfg.get_service_by_name(service_name)
+    if not svc_def:
+        raise ValueError(f"Unknown service '{service_name}'")
+
+    has_profiles = bool(svc_def.profiles)
+    has_varieties = bool(svc_def.varieties)
+
+    profile: str | None = None
+    variety: str | None = None
+
+    expected_tokens = 0
+    if has_profiles:
+        expected_tokens += 1
+    if has_varieties:
+        expected_tokens += 1
+
+    if len(tokens) != expected_tokens:
+        msg = f"Service '{service_name}' expects {expected_tokens} tokens"
+        details = []
+        if has_profiles:
+            details.append("profile")
+        if has_varieties:
+            details.append("variety")
+        if details:
+            msg += " ([" + "][".join(details) + "])"
+        else:
+            msg += " (none)"
+        raise ValueError(f"{msg}, but got {len(tokens)}")
+
+    curr = 0
+    if has_profiles:
+        profile = tokens[curr]
+        if profile not in svc_def.profiles:
+            raise ValueError(
+                f"Unknown profile '{profile}' for service '{service_name}'",
+            )
+        curr += 1
+
+    if has_varieties:
+        variety = tokens[curr]
+        if variety not in svc_def.varieties:
+            raise ValueError(
+                f"Unknown variety '{variety}' for service '{service_name}'",
+            )
+        curr += 1
+
+    return {
+        "service_name": service_name,
+        "profile": profile,
+        "variety": variety,
+    }
+
+
+def _parse_footprint_spec(spec: str) -> list[dict[str, Any]]:
+    cfg = SystemConfigReader.singleton()
+    result: list[dict[str, Any]] = []
+    for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
+        result.append(_parse_footprint_spec_entry(raw, cfg))
+    if not result:
+        raise ValueError("No services parsed from footprint specification")
+    return result
+
+
+def action_footprint_services(
+    port: int,
+    spec: str | None,
+    all_services: bool,
+) -> int:
+    try:
+        body: dict[str, Any] = {
+            "footprint_all_services": all_services,
+        }
+
+        if all_services:
+            if spec:
+                print(
+                    "Warning: services specification ignored when using --all"
+                )
+        else:
+            if not spec:
+                print(
+                    "Error: services specification is required when "
+                    "not using --all",
+                )
+                return 2
+            body["services"] = _parse_footprint_spec(spec)
+
+        data = ucli.footprint_services(port=port, body=body)
+
+        print(f"data: {json.dumps(data, indent=2)}")
+        status = data.get("status")
+        if status == "accepted":
+            req_id = data.get("request_id")
+            print(f"\n✓ Footprint request accepted (ID: {req_id})\n")
+            return 0
+        print(f"Unexpected response: {json.dumps(data)}")
+        return 2
+    except Exception as e:
+        print(f"Error footprinting services: {type(e).__name__}({e})")
+        return 2
+
+
 def action_update_services(port: int, clear: bool, spec: str | None) -> int:
     print("**** HERE **** ")
     try:
@@ -415,6 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
             "list_active_services",
             "show_host_resources",
             "update_services",
+            "footprint_services",
             "status",
         ],
     )
@@ -463,11 +575,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="For footprint_services: footprint all services",
+    )
+    parser.add_argument(
         "services_spec",
         nargs="?",
         help=(
-            "For update_services: comma-separated entries like "
-            "NAME[service][variety][profile]"
+            "For update_services/footprint_services: comma-separated entries "
+            "like NAME[service][variety][profile] or "
+            "service[profile][variety]"
         ),
     )
     return parser
@@ -497,6 +615,12 @@ def main(argv: list[str] | None = None) -> int:
             port_for_api,
             args.clear,
             args.services_spec,
+        )
+    if args.action == "footprint_services":
+        return action_footprint_services(
+            port_for_api,
+            args.services_spec,
+            args.all,
         )
     if args.action == "status":
         return action_status()
