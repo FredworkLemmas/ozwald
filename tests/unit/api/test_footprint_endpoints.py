@@ -40,14 +40,16 @@ class TestFootprintEndpoints:
             return_value=mock_provisioner,
         )
 
-        resp = client.get("/srv/services/footprint/", headers=auth_header)
+        resp = client.get(
+            "/srv/services/active/footprint/", headers=auth_header
+        )
 
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
         assert data[0]["request_id"] == "1"
 
-    def test_get_footprint_requests_no_slash(self, client, auth_header, mocker):
+    def test_get_footprint_requests_variants(self, client, auth_header, mocker):
         mock_cache = mocker.Mock()
         mock_cache.get_requests.return_value = []
         mocker.patch(
@@ -61,8 +63,14 @@ class TestFootprintEndpoints:
             return_value=mock_provisioner,
         )
 
-        resp = client.get("/srv/services/footprint", headers=auth_header)
-        assert resp.status_code == 200
+        for path in [
+            "/srv/services/active/footprint/",
+            "/srv/services/active/footprint",
+            "/srv/services/footprint/",
+            "/srv/services/footprint",
+        ]:
+            resp = client.get(path, headers=auth_header)
+            assert resp.status_code == 200
 
     def test_post_footprint_request(self, client, auth_header, mocker):
         mock_cache = mocker.Mock()
@@ -88,7 +96,7 @@ class TestFootprintEndpoints:
 
         action = {"request_id": "2", "footprint_all_services": False}
         resp = client.post(
-            "/srv/services/footprint/",
+            "/srv/services/active/footprint/",
             json=action,
             headers=auth_header,
         )
@@ -99,7 +107,7 @@ class TestFootprintEndpoints:
         assert isinstance(args, FootprintAction)
         assert args.request_id == "2"
 
-    def test_post_footprint_request_no_slash(self, client, auth_header, mocker):
+    def test_post_footprint_request_variants(self, client, auth_header, mocker):
         mock_cache = mocker.Mock()
         mocker.patch(
             "api.provisioner.FootprintRequestCache",
@@ -118,12 +126,17 @@ class TestFootprintEndpoints:
             return_value=mock_active_cache,
         )
 
-        action = {"request_id": "3", "footprint_all_services": False}
-        resp = client.post(
+        for path in [
+            "/srv/services/active/footprint/",
+            "/srv/services/active/footprint",
+            "/srv/services/footprint/",
             "/srv/services/footprint",
-            json=action,
-            headers=auth_header,
-        )
+        ]:
+            action = {"request_id": path, "footprint_all_services": False}
+            resp = client.post(
+                path,
+                json=action,
+                headers=auth_header,
+            )
 
-        assert resp.status_code == 202
-        assert mock_cache.add_footprint_request.called
+            assert resp.status_code == 202

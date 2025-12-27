@@ -188,6 +188,91 @@ async def update_services_legacy(
 
 
 @app.get(
+    "/srv/services/active/footprint/",
+    response_model=List[FootprintAction],
+    summary="Get pending footprinting requests",
+    description="List all pending footprint requests in the cache",
+)
+@app.get(
+    "/srv/services/active/footprint",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+@app.get(
+    "/srv/services/footprint/",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+@app.get(
+    "/srv/services/footprint",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+async def get_footprint_requests(
+    authenticated: bool = Depends(verify_system_key),
+) -> list[FootprintAction]:
+    provisioner = SystemProvisioner.singleton()
+    footprint_cache = FootprintRequestCache(provisioner.get_cache())
+    return footprint_cache.get_requests()
+
+
+@app.post(
+    "/srv/services/active/footprint/",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Queue a footprinting request",
+    description=(
+        "Queue a footprinting action. The system must be unloaded (no active "
+        "services) or the request will be rejected."
+    ),
+)
+@app.post(
+    "/srv/services/active/footprint",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+@app.post(
+    "/srv/services/footprint/",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+@app.post(
+    "/srv/services/footprint",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+async def post_footprint_request(
+    action: FootprintAction,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    provisioner = SystemProvisioner.singleton()
+
+    # Ensure system is unloaded: reject if any active services exist
+    active_cache = ActiveServicesCache(provisioner.get_cache())
+    if active_cache.get_services():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Footprinting requires an unloaded system (no active services)"
+            ),
+        )
+
+    # Prepare action metadata
+    action.requested_at = datetime.now()
+    action.request_id = action.request_id or uuid.uuid4().hex
+
+    footprint_cache = FootprintRequestCache(provisioner.get_cache())
+    try:
+        footprint_cache.add_footprint_request(action)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to queue footprinting request: {e}",
+        ) from e
+
+    return {"status": "accepted", "request_id": action.request_id}
+
+
+@app.get(
     "/srv/resources/available/",
     response_model=List[Resource],
     summary="Get available resources",
@@ -228,76 +313,6 @@ async def get_host_resources(
 async def health_check() -> dict:
     """Simple health check endpoint to verify the service is running."""
     return {"status": "healthy"}
-
-
-# ---------------------------------------------------------------------------
-# Footprinting API
-# ---------------------------------------------------------------------------
-
-
-@app.get(
-    "/srv/services/footprint/",
-    response_model=List[FootprintAction],
-    summary="Get pending footprinting requests",
-    description="List all pending footprint requests in the cache",
-)
-@app.get(
-    "/srv/services/footprint",
-    response_model=List[FootprintAction],
-    include_in_schema=False,
-)
-async def get_footprint_requests(
-    authenticated: bool = Depends(verify_system_key),
-) -> list[FootprintAction]:
-    provisioner = SystemProvisioner.singleton()
-    footprint_cache = FootprintRequestCache(provisioner.get_cache())
-    return footprint_cache.get_requests()
-
-
-@app.post(
-    "/srv/services/footprint/",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Queue a footprinting request",
-    description=(
-        "Queue a footprinting action. The system must be unloaded (no active "
-        "services) or the request will be rejected."
-    ),
-)
-@app.post(
-    "/srv/services/footprint",
-    status_code=status.HTTP_202_ACCEPTED,
-    include_in_schema=False,
-)
-async def post_footprint_request(
-    action: FootprintAction,
-    authenticated: bool = Depends(verify_system_key),
-) -> dict:
-    provisioner = SystemProvisioner.singleton()
-
-    # Ensure system is unloaded: reject if any active services exist
-    active_cache = ActiveServicesCache(provisioner.get_cache())
-    if active_cache.get_services():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Footprinting requires an unloaded system (no active services)"
-            ),
-        )
-
-    # Prepare action metadata
-    action.requested_at = datetime.now()
-    action.request_id = action.request_id or uuid.uuid4().hex
-
-    footprint_cache = FootprintRequestCache(provisioner.get_cache())
-    try:
-        footprint_cache.add_footprint_request(action)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to queue footprinting request: {e}",
-        ) from e
-
-    return {"status": "accepted", "request_id": action.request_id}
 
 
 # Allow running this module directly, e.g. `python -m api.provisioner`

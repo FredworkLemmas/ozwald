@@ -33,7 +33,7 @@ class TestCliFootprintServices:
         assert mock_post.call_count == 1
         assert (
             mock_post.call_args[0][0]
-            == "http://localhost:8000/srv/services/footprint/"
+            == "http://localhost:8000/srv/services/active/footprint/"
         )
 
     def test_footprint_services_fallback_success(self, mocker, monkeypatch):
@@ -54,14 +54,14 @@ class TestCliFootprintServices:
         assert mock_post.call_count == 2
         assert (
             mock_post.call_args_list[0][0][0]
-            == "http://localhost:8000/srv/services/footprint/"
+            == "http://localhost:8000/srv/services/active/footprint/"
         )
         assert (
             mock_post.call_args_list[1][0][0]
-            == "http://localhost:8000/srv/services/footprint"
+            == "http://localhost:8000/srv/services/footprint/"
         )
 
-    def test_footprint_services_fail_both(self, mocker, monkeypatch):
+    def test_footprint_services_fail_all(self, mocker, monkeypatch):
         monkeypatch.setenv("OZWALD_SYSTEM_KEY", "testkey")
         mock_post = mocker.patch("util.cli.http_post")
 
@@ -72,4 +72,4 @@ class TestCliFootprintServices:
             cli.footprint_services(port=8000, body=body)
 
         assert excinfo.value.response.status_code == 404
-        assert mock_post.call_count == 2
+        assert mock_post.call_count == 4

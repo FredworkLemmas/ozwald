@@ -96,18 +96,31 @@ def footprint_services(
 ) -> dict[str, Any]:
     """Call the provisioner footprint services endpoint.
 
-    Tries the version with a trailing slash first, then falls back
-    to the one without it for backward compatibility.
+    Tries multiple path variations for backward and forward compatibility.
     """
-    url = f"http://localhost:{port}/srv/services/footprint/"
-    fallback_url = f"http://localhost:{port}/srv/services/footprint"
+    paths = [
+        f"http://localhost:{port}/srv/services/active/footprint/",
+        f"http://localhost:{port}/srv/services/footprint/",
+        f"http://localhost:{port}/srv/services/footprint",
+        f"http://localhost:{port}/srv/services/active/footprint",
+    ]
     headers = _auth_headers(system_key)
 
-    resp = http_post(url, headers=headers, json=body)
-    if resp.status_code == 404:
-        resp = http_post(fallback_url, headers=headers, json=body)
-    resp.raise_for_status()
-    data = resp.json()
-    if not isinstance(data, dict):
-        raise ValueError("Unexpected response format for footprint_services")
-    return data
+    last_resp = None
+    for url in paths:
+        resp = http_post(url, headers=headers, json=body)
+        if resp.status_code != 404:
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError(
+                    "Unexpected response format for footprint_services",
+                )
+            return data
+        last_resp = resp
+
+    if last_resp:
+        last_resp.raise_for_status()
+
+    # This should only be reached if paths is empty, which it isn't
+    raise RuntimeError("Failed to call footprint services")
