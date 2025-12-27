@@ -193,27 +193,45 @@ async def update_services_legacy(
     summary="Get pending footprinting requests",
     description="List all pending footprint requests in the cache",
 )
-@app.get(
-    "/srv/services/active/footprint",
-    response_model=List[FootprintAction],
-    include_in_schema=False,
-)
-@app.get(
-    "/srv/services/footprint/",
-    response_model=List[FootprintAction],
-    include_in_schema=False,
-)
-@app.get(
-    "/srv/services/footprint",
-    response_model=List[FootprintAction],
-    include_in_schema=False,
-)
 async def get_footprint_requests(
     authenticated: bool = Depends(verify_system_key),
 ) -> list[FootprintAction]:
     provisioner = SystemProvisioner.singleton()
     footprint_cache = FootprintRequestCache(provisioner.get_cache())
     return footprint_cache.get_requests()
+
+
+@app.get(
+    "/srv/services/active/footprint",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+async def get_footprint_requests_alt1(
+    authenticated: bool = Depends(verify_system_key),
+) -> list[FootprintAction]:
+    return await get_footprint_requests(authenticated)
+
+
+@app.get(
+    "/srv/services/footprint/",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+async def get_footprint_requests_alt2(
+    authenticated: bool = Depends(verify_system_key),
+) -> list[FootprintAction]:
+    return await get_footprint_requests(authenticated)
+
+
+@app.get(
+    "/srv/services/footprint",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
+async def get_footprint_requests_alt3(
+    authenticated: bool = Depends(verify_system_key),
+) -> list[FootprintAction]:
+    return await get_footprint_requests(authenticated)
 
 
 @app.post(
@@ -224,21 +242,6 @@ async def get_footprint_requests(
         "Queue a footprinting action. The system must be unloaded (no active "
         "services) or the request will be rejected."
     ),
-)
-@app.post(
-    "/srv/services/active/footprint",
-    status_code=status.HTTP_202_ACCEPTED,
-    include_in_schema=False,
-)
-@app.post(
-    "/srv/services/footprint/",
-    status_code=status.HTTP_202_ACCEPTED,
-    include_in_schema=False,
-)
-@app.post(
-    "/srv/services/footprint",
-    status_code=status.HTTP_202_ACCEPTED,
-    include_in_schema=False,
 )
 async def post_footprint_request(
     action: FootprintAction,
@@ -270,6 +273,42 @@ async def post_footprint_request(
         ) from e
 
     return {"status": "accepted", "request_id": action.request_id}
+
+
+@app.post(
+    "/srv/services/active/footprint",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+async def post_footprint_request_alt1(
+    action: FootprintAction,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    return await post_footprint_request(action, authenticated)
+
+
+@app.post(
+    "/srv/services/footprint/",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+async def post_footprint_request_alt2(
+    action: FootprintAction,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    return await post_footprint_request(action, authenticated)
+
+
+@app.post(
+    "/srv/services/footprint",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+async def post_footprint_request_alt3(
+    action: FootprintAction,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    return await post_footprint_request(action, authenticated)
 
 
 @app.get(

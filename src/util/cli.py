@@ -119,7 +119,7 @@ def footprint_services(
             return data
         last_resp = resp
 
-    if last_resp:
+    if last_resp is not None:
         last_resp.raise_for_status()
 
     # This should only be reached if paths is empty, which it isn't

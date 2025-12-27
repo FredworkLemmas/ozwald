@@ -16,6 +16,9 @@ class MockResponse:
         if 400 <= self.status_code < 600:
             raise requests.HTTPError(f"{self.status_code} Error", response=self)
 
+    def __bool__(self):
+        return 200 <= self.status_code < 400
+
 
 class TestCliFootprintServices:
     def test_footprint_services_primary_success(self, mocker, monkeypatch):
