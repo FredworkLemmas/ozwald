@@ -7,6 +7,9 @@ from .http import (
     get as http_get,
     post as http_post,
 )
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _auth_headers(system_key: str | None = None) -> dict[str, str]:
@@ -78,9 +81,17 @@ def update_services(
     legacy = f"http://localhost:{port}/srv/services/update/"
     headers = _auth_headers(system_key)
 
+    logger.info("Attempting to update services via %s", primary)
     resp = http_post(primary, headers=headers, json=body)
     if resp.status_code == 404:
+        logger.info("Primary endpoint 404'd, falling back to %s", legacy)
         resp = http_post(legacy, headers=headers, json=body)
+
+    if resp.status_code != 202:
+        logger.warning(
+            "Update services failed: %s %s", resp.status_code, resp.text
+        )
+
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, dict):
@@ -108,8 +119,16 @@ def footprint_services(
 
     last_resp = None
     for url in paths:
+        logger.info("Attempting footprint request via %s", url)
         resp = http_post(url, headers=headers, json=body)
         if resp.status_code != 404:
+            if resp.status_code != 202:
+                logger.warning(
+                    "Footprint request failed at %s: %s %s",
+                    url,
+                    resp.status_code,
+                    resp.text,
+                )
             resp.raise_for_status()
             data = resp.json()
             if not isinstance(data, dict):
@@ -117,9 +136,11 @@ def footprint_services(
                     "Unexpected response format for footprint_services",
                 )
             return data
+        logger.info("Endpoint %s returned 404", url)
         last_resp = resp
 
     if last_resp is not None:
+        logger.error("All footprinting endpoints failed with 404")
         last_resp.raise_for_status()
 
     # This should only be reached if paths is empty, which it isn't

@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 from datetime import datetime
 from typing import Annotated, List
 
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from hosts.resources import HostResources
@@ -89,6 +90,22 @@ app = FastAPI(
 # Testing/mocking compatibility: allow tests that patch "src.api.provisioner"
 # to resolve to this module (which is actually "api.provisioner").
 sys.modules.setdefault("src.api.provisioner", sys.modules[__name__])
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Middleware to log all incoming requests and their responses."""
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    logger.info(
+        "API Request: %s %s - Status: %s - Duration: %.4fs",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration,
+    )
+    return response
 
 
 @app.get(
@@ -196,6 +213,9 @@ async def update_services_legacy(
 async def get_footprint_requests(
     authenticated: bool = Depends(verify_system_key),
 ) -> list[FootprintAction]:
+    logger.info(
+        "Footprint GET handler reached: /srv/services/active/footprint/"
+    )
     provisioner = SystemProvisioner.singleton()
     footprint_cache = FootprintRequestCache(provisioner.get_cache())
     return footprint_cache.get_requests()
@@ -247,6 +267,7 @@ async def post_footprint_request(
     action: FootprintAction,
     authenticated: bool = Depends(verify_system_key),
 ) -> dict:
+    logger.info("Footprint handler reached: /srv/services/active/footprint/")
     provisioner = SystemProvisioner.singleton()
 
     # Ensure system is unloaded: reject if any active services exist
