@@ -599,6 +599,10 @@ def main(argv: list[str] | None = None) -> int:
     port_for_api = args.port or args.api_port
     restart = not args.no_restart
 
+    print(
+        f"OZWALD_SYSTEM_KEY: {os.environ.get('OZWALD_SYSTEM_KEY', '<not set>')}"
+    )
+
     # Actions that require OZWALD_SYSTEM_KEY
     api_actions = {
         "list_configured_services",
