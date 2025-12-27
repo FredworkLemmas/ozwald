@@ -241,6 +241,11 @@ async def health_check() -> dict:
     summary="Get pending footprinting requests",
     description="List all pending footprint requests in the cache",
 )
+@app.get(
+    "/srv/services/footprint",
+    response_model=List[FootprintAction],
+    include_in_schema=False,
+)
 async def get_footprint_requests(
     authenticated: bool = Depends(verify_system_key),
 ) -> list[FootprintAction]:
@@ -257,6 +262,11 @@ async def get_footprint_requests(
         "Queue a footprinting action. The system must be unloaded (no active "
         "services) or the request will be rejected."
     ),
+)
+@app.post(
+    "/srv/services/footprint",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
 )
 async def post_footprint_request(
     action: FootprintAction,

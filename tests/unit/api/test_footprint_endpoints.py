@@ -47,6 +47,23 @@ class TestFootprintEndpoints:
         assert len(data) == 1
         assert data[0]["request_id"] == "1"
 
+    def test_get_footprint_requests_no_slash(self, client, auth_header, mocker):
+        mock_cache = mocker.Mock()
+        mock_cache.get_requests.return_value = []
+        mocker.patch(
+            "api.provisioner.FootprintRequestCache",
+            return_value=mock_cache,
+        )
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_cache.return_value = {}
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+
+        resp = client.get("/srv/services/footprint", headers=auth_header)
+        assert resp.status_code == 200
+
     def test_post_footprint_request(self, client, auth_header, mocker):
         mock_cache = mocker.Mock()
         mocker.patch(
@@ -81,3 +98,32 @@ class TestFootprintEndpoints:
         args = mock_cache.add_footprint_request.call_args[0][0]
         assert isinstance(args, FootprintAction)
         assert args.request_id == "2"
+
+    def test_post_footprint_request_no_slash(self, client, auth_header, mocker):
+        mock_cache = mocker.Mock()
+        mocker.patch(
+            "api.provisioner.FootprintRequestCache",
+            return_value=mock_cache,
+        )
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_cache.return_value = {}
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+        mock_active_cache = mocker.Mock()
+        mock_active_cache.get_services.return_value = []
+        mocker.patch(
+            "api.provisioner.ActiveServicesCache",
+            return_value=mock_active_cache,
+        )
+
+        action = {"request_id": "3", "footprint_all_services": False}
+        resp = client.post(
+            "/srv/services/footprint",
+            json=action,
+            headers=auth_header,
+        )
+
+        assert resp.status_code == 202
+        assert mock_cache.add_footprint_request.called

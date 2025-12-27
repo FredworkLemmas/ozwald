@@ -94,11 +94,18 @@ def footprint_services(
     body: dict[str, Any],
     system_key: str | None = None,
 ) -> dict[str, Any]:
-    """Call the provisioner footprint services endpoint."""
+    """Call the provisioner footprint services endpoint.
+
+    Tries the version with a trailing slash first, then falls back
+    to the one without it for backward compatibility.
+    """
     url = f"http://localhost:{port}/srv/services/footprint/"
+    fallback_url = f"http://localhost:{port}/srv/services/footprint"
     headers = _auth_headers(system_key)
 
     resp = http_post(url, headers=headers, json=body)
+    if resp.status_code == 404:
+        resp = http_post(fallback_url, headers=headers, json=body)
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, dict):
