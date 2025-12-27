@@ -236,7 +236,7 @@ async def health_check() -> dict:
 
 
 @app.get(
-    "/srv/services/footprint",
+    "/srv/services/footprint/",
     response_model=List[FootprintAction],
     summary="Get pending footprinting requests",
     description="List all pending footprint requests in the cache",
@@ -250,7 +250,7 @@ async def get_footprint_requests(
 
 
 @app.post(
-    "/srv/services/footprint",
+    "/srv/services/footprint/",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Queue a footprinting request",
     description=(

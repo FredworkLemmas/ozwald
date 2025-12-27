@@ -95,7 +95,7 @@ def footprint_services(
     system_key: str | None = None,
 ) -> dict[str, Any]:
     """Call the provisioner footprint services endpoint."""
-    url = f"http://localhost:{port}/srv/services/footprint"
+    url = f"http://localhost:{port}/srv/services/footprint/"
     headers = _auth_headers(system_key)
 
     resp = http_post(url, headers=headers, json=body)

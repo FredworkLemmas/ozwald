@@ -246,10 +246,10 @@ Endpoints:
 - `GET /srv/host/resources`
   - Returns a structured summary of CPU, RAM, GPU, and VRAM on the host.
 
-- `GET /srv/services/footprint`
+- `GET /srv/services/footprint/`
   - Returns pending footprinting requests.
 
-- `POST /srv/services/footprint`
+- `POST /srv/services/footprint/`
   - Queues a footprinting request while the system is unloaded.
 
 Example requests:

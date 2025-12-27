@@ -40,7 +40,7 @@ class TestFootprintEndpoints:
             return_value=mock_provisioner,
         )
 
-        resp = client.get("/srv/services/footprint", headers=auth_header)
+        resp = client.get("/srv/services/footprint/", headers=auth_header)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -71,7 +71,7 @@ class TestFootprintEndpoints:
 
         action = {"request_id": "2", "footprint_all_services": False}
         resp = client.post(
-            "/srv/services/footprint",
+            "/srv/services/footprint/",
             json=action,
             headers=auth_header,
         )
