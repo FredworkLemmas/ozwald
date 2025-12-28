@@ -63,6 +63,22 @@ def get_host_resources(
     return data
 
 
+def get_openapi_spec(
+    *,
+    port: int = 8000,
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Fetch the OpenAPI spec from the provisioner API."""
+    url = f"http://localhost:{port}/openapi.json"
+    headers = _auth_headers(system_key)
+    resp = http_get(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected response format for OpenAPI spec")
+    return data
+
+
 def update_services(
     *,
     port: int = 8000,

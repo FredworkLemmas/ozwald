@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path.cwd()
 env_path = os.path.join(BASE_DIR, ".env")
+dev_settings_path = os.path.join(BASE_DIR, "dev", "resources", "settings.yml")
 load_dotenv(dotenv_path=env_path)
 
 PROVISIONER_NETWORK = "provisioner_network"
@@ -97,6 +98,10 @@ def _compose_gpu_opts() -> str:
     return ""
 
 
+def _get_ozwald_config_filepath() -> dict:
+    return os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+
+
 def start_provisioner_api(
     *,
     port: int = None,
@@ -143,7 +148,7 @@ def start_provisioner_api(
     src_dir = Path("src").absolute()
 
     # Config mount
-    default_rel_or_abs = os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+    default_rel_or_abs = _get_ozwald_config_filepath()
     config_path = str(Path(default_rel_or_abs).absolute())
     src_mount = ""
     if mount_source_dir:
@@ -238,7 +243,7 @@ def start_provisioner_backend(
     gpu_opts = _compose_gpu_opts()
     src_dir = Path("src").absolute()
 
-    default_rel_or_abs = os.environ.get("OZWALD_CONFIG", "ozwald.yml")
+    default_rel_or_abs = _get_ozwald_config_filepath()
     config_path = str(Path(default_rel_or_abs).absolute())
     src_mount = ""
     if mount_source_dir:
