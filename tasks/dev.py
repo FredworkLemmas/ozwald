@@ -36,6 +36,10 @@ DEFAULT_OZWALD_PROVISIONER = os.environ.get(
 )
 DEFAULT_OZWALD_HOST = os.environ.get("DEFAULT_OZWALD_HOST", "localhost")
 
+# default ozwald config for dev tasks
+if "OZWALD_CONFIG" not in os.environ:
+    os.environ["OZWALD_CONFIG"] = str(DEFAULT_OZWALD_CONFIG)
+
 
 @task(namespace="dev", name="show-host-resources")
 def show_host_resources(c, use_api=False, port=DEFAULT_PROVISIONER_PORT):

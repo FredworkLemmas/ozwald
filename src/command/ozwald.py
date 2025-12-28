@@ -481,7 +481,6 @@ def action_footprint_services(
 
 
 def action_update_services(port: int, clear: bool, spec: str | None) -> int:
-    print("**** HERE **** ")
     try:
         if clear:
             body: list[dict[str, Any]] = []

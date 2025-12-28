@@ -99,7 +99,7 @@ def _compose_gpu_opts() -> str:
 
 
 def _get_ozwald_config_filepath() -> dict:
-    return os.environ.get("OZWALD_CONFIG", dev_settings_path)
+    return os.environ.get("OZWALD_CONFIG", "ozwald.yml")
 
 
 def start_provisioner_api(
