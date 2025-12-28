@@ -59,7 +59,9 @@ class FootprintRequestCache:
                 try:
                     # Convert FootprintAction objects to JSON-serializable
                     # dictionaries
-                    requests_data = [req.model_dump() for req in requests]
+                    requests_data = [
+                        req.model_dump(mode="json") for req in requests
+                    ]
 
                     # Encode as JSON and store in Redis
                     json_data = json.dumps(requests_data)
@@ -112,7 +114,9 @@ class FootprintRequestCache:
                         current_list = json.loads(current_json)
 
                     # Append the new request (serialize via model_dump)
-                    current_list.append(footprint_request.model_dump())
+                    current_list.append(
+                        footprint_request.model_dump(mode="json"),
+                    )
 
                     # Store updated list
                     self._redis_client.set(
@@ -177,7 +181,9 @@ class FootprintRequestCache:
                         )
 
                     # Replace with the updated request
-                    current_list[index] = footprint_request.model_dump()
+                    current_list[index] = footprint_request.model_dump(
+                        mode="json",
+                    )
 
                     # Save back
                     self._redis_client.set(

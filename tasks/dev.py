@@ -9,6 +9,7 @@ from hosts.resources import HostResources
 from orchestration.models import ServiceInformation
 from util import (
     cli as ucli,
+    openapi as uopenapi,
     services as svc,
 )
 
@@ -261,6 +262,60 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
         if hasattr(e, "response") and e.response is not None:
             print(f"Response status: {e.response.status_code}")
             print(f"Response body: {e.response.text}")
+
+
+@task(namespace="dev", name="list-api-endpoints")
+def list_api_endpoints(c, port=DEFAULT_PROVISIONER_PORT):
+    """List all API endpoints from the provisioner API"""
+    try:
+        data = ucli.get_openapi_spec(port=port)
+        openapi_doc = uopenapi.OpenApiDocument(data=data)
+
+        print("\n" + "=" * 80)
+        print(f"{'URL':<35} {'METHODS':<10} {'REQUEST':<15} {'RESPONSE':<15}")
+        print("-" * 80)
+
+        for endpoint in openapi_doc.endpoints:
+            methods = ",".join(endpoint.supported_methods)
+            req = endpoint.request_schema or "None"
+            resp = endpoint.response_schema or "None"
+            print(f"{endpoint.url:<35} {methods:<10} {req:<15} {resp:<15}")
+
+        print("=" * 80 + "\n")
+
+    except Exception as e:
+        print(f"Error listing API endpoints: {e}")
+
+
+@task(namespace="dev", name="show-api-schemas")
+def show_api_schemas(c, schemas, port=DEFAULT_PROVISIONER_PORT):
+    """Show detailed schema information for a list of schema names.
+
+    Args:
+        schemas: Comma-separated list of schema names.
+        port: Port where the provisioner API is running.
+    """
+    try:
+        import json
+
+        data = ucli.get_openapi_spec(port=port)
+        openapi_doc = uopenapi.OpenApiDocument(data=data)
+
+        schema_names = [s.strip() for s in schemas.split(",")]
+
+        for name in schema_names:
+            schema_data = openapi_doc.schemas.get(name)
+            print("\n" + "=" * 80)
+            print(f"SCHEMA: {name}")
+            print("-" * 80)
+            if schema_data:
+                print(json.dumps(schema_data, indent=2))
+            else:
+                print("NOT FOUND")
+            print("=" * 80)
+
+    except Exception as e:
+        print(f"Error showing API schemas: {e}")
 
 
 @task(namespace="dev", name="list-active-services")

@@ -64,7 +64,7 @@ class ActiveServicesCache:
                     # Convert ServiceInformation objects to JSON-serializable
                     # dictionaries
                     services_data = [
-                        service.model_dump() for service in services
+                        service.model_dump(mode="json") for service in services
                     ]
 
                     # Encode as JSON and store in Redis

@@ -458,7 +458,7 @@ class ConfigReader:
         for service in self.services:
             if service.service_name == service_name:
                 result = service
-        logger.info("get_service_by_name%s -> %s", service_name, result)
+        # logger.info("get_service_by_name %s -> %s", service_name, result)
         return result
 
     # No action/mode lookups in simplified schema.

@@ -282,6 +282,7 @@ async def post_footprint_request(
     try:
         footprint_cache.add_footprint_request(action)
     except Exception as e:
+        logger.warning(f"Failed to queue footprinting request: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Failed to queue footprinting request: {e}",
