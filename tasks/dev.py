@@ -521,6 +521,11 @@ def _docker_group_id():
 @task(namespace="dev", name="start-provisioner-backend")
 def start_provisioner_backend(c, restart=True):
     """Start the provisioner-backend container via util.services."""
+    try:
+        svc.validate_footprint_data_env()
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        return
     svc.start_provisioner_backend(restart=restart)
 
 
@@ -553,6 +558,12 @@ def start_provisioner(
             running
 
     """
+    try:
+        svc.validate_footprint_data_env()
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        return
+
     print("Starting provisioner stack: network -> redis -> backend -> api ...")
     # Ensure network exists first
     svc.ensure_provisioner_network()

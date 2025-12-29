@@ -40,7 +40,7 @@ RUN python -m virtualenv /venv && \
     /venv/bin/pip install --no-cache-dir .
 
 # Switch to non-root user
-USER ozwald
+#USER ozwald
 
 # Expose the default port
 EXPOSE 8000

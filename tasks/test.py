@@ -120,44 +120,9 @@ def integration(
     temp_root: str = "",
     use_dev_settings: bool = False,
 ):
-    """Run integration tests against running provisioner services.
+    """Run integration tests against provisioner services."""
 
-    This checks that the API server, backend service, and Redis service are
-    running. If any are not running, the tests will be skipped with an
-    explanatory message.
-    """
-    # Determine expected container names (as used by dev tasks)
-    api_container = os.environ.get(
-        "OZWALD_PROVISIONER_API_CONTAINER",
-        "ozwald-provisioner-api-arch",
-    )
-    backend_container = os.environ.get(
-        "OZWALD_PROVISIONER_BACKEND_CONTAINER",
-        "ozwald-provisioner-backend",
-    )
-    redis_container = os.environ.get(
-        "OZWALD_PROVISIONER_REDIS_CONTAINER",
-        "ozwald-provisioner-redis",
-    )
-
-    # Helper to check if a container is running
-    def _is_container_running(name: str) -> bool:
-        result = c.run(
-            f"docker ps --filter name={name} --format '{{{{.Names}}}}'",
-            hide=True,
-            warn=True,
-        )
-        return result.ok and result.stdout.strip() == name
-
-    missing = []
-    if not _is_container_running(api_container):
-        missing.append(f"API server container '{api_container}'")
-    if not _is_container_running(backend_container):
-        missing.append(f"backend service container '{backend_container}'")
-    if not _is_container_running(redis_container):
-        missing.append(f"Redis container '{redis_container}'")
-
-    # Also verify the API health endpoint is responsive (on host)
+    # Verify the API health endpoint is responsive (on host)
     port = int(os.environ.get("OZWALD_PROVISIONER_PORT", 8000))
     system_key = os.environ.get("OZWALD_SYSTEM_KEY")
     if not system_key:
@@ -166,37 +131,6 @@ def integration(
             "This key is required for API authentication during integration "
             "tests.",
         )
-    # Curl health with a short timeout; no auth required
-    # health_ok = c.run(
-    #     f"curl -s -m 2 http://localhost:{port}/health",
-    #     hide=True,
-    #     warn=True,
-    # )
-    # if not health_ok.ok:
-    #     missing.append(
-    #         "API health endpoint on "
-    #         f"http://localhost:{port}/health"
-    #     )
-
-    if missing:
-        print(
-            "\nCannot run integration tests because the following required "
-            "services are not running:",
-        )
-        for m in missing:
-            print(f" - {m}")
-        print(
-            "\nPlease start the provisioner stack (API, backend, and Redis) "
-            "before running integration tests.",
-        )
-        print(
-            "For example:\n  invocate dev.start-provisioner-network\n  "
-            "invocate dev.start-provisioner-redis\n  "
-            "invocate dev.start-provisioner-backend\n  "
-            "invocate dev.start-provisioner-api",
-        )
-        print("Once the services are running, rerun: invocate test.integration")
-        return
 
     # Prepare settings: generate temp config unless opting into dev file
     if use_dev_settings:

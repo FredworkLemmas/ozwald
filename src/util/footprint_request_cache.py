@@ -4,6 +4,9 @@ from typing import List
 import redis
 
 from orchestration.models import Cache, FootprintAction
+from util.logger import get_logger
+
+logger = get_logger()
 
 
 class WriteCollision(Exception):
@@ -35,6 +38,11 @@ class FootprintRequestCache:
         port = params.get("port", 6379)
         db = params.get("db", 0)
         password = params.get("password")
+
+        logger.info(
+            "Footprint request cache initializing Redis client: "
+            f"host={host}, port={port}"
+        )
 
         return redis.Redis(
             host=host,
