@@ -1,3 +1,4 @@
+import os
 import types
 from datetime import datetime, timedelta
 
@@ -61,12 +62,16 @@ def _svc_info(
 
 
 @pytest.fixture
-def provisioner_env(monkeypatch):
+def provisioner_env(monkeypatch, tmp_path):
     """Patch orchestration.provisioner dependencies for isolated daemon
     tests.
     """
     import orchestration.provisioner as prov_mod
     from orchestration.provisioner import SystemProvisioner
+
+    # Set mandatory footprint data env var
+    footprint_file = tmp_path / "footprints.yml"
+    monkeypatch.setenv("OZWALD_FOOTPRINT_DATA", str(footprint_file))
 
     # Replace the ActiveServicesCache used by SystemProvisioner with our fake
     monkeypatch.setattr(
@@ -337,9 +342,71 @@ class TestUpdateServicesBehaviorEmptyList:
         fake_cache._services = []
         ok = prov.update_services([])
         assert ok
-        # A write with an empty list is still a valid operation
         assert fake_cache.set_calls
         assert fake_cache.set_calls[-1] == []
+
+
+class TestRunBackendDaemonChecks:
+    def test_run_backend_daemon_missing_env(self, provisioner_env, mocker):
+        prov_mod, prov, _ = provisioner_env
+        mocker.patch.dict(os.environ, {}, clear=True)
+        mock_logger = mocker.patch.object(prov_mod, "logger")
+
+        prov.run_backend_daemon()
+
+        mock_logger.error.assert_any_call(
+            "OZWALD_FOOTPRINT_DATA environment variable is not defined; "
+            "backend daemon cannot run",
+        )
+
+    def test_run_backend_daemon_not_writable(
+        self, provisioner_env, mocker, tmp_path
+    ):
+        prov_mod, prov, _ = provisioner_env
+        footprint_file = tmp_path / "footprints.yml"
+        footprint_file.touch()
+        footprint_file.chmod(0o444)
+
+        mocker.patch.dict(
+            os.environ, {"OZWALD_FOOTPRINT_DATA": str(footprint_file)}
+        )
+        mock_logger = mocker.patch.object(prov_mod, "logger")
+
+        if os.access(footprint_file, os.W_OK):
+            pytest.skip("File is still writable even after chmod 444")
+
+        prov.run_backend_daemon()
+
+        mock_logger.error.assert_any_call(
+            f"Footprint data file '{footprint_file}' is not writable; "
+            "backend daemon cannot run",
+        )
+
+    def test_run_backend_daemon_parent_not_writable(
+        self, provisioner_env, mocker, tmp_path
+    ):
+        prov_mod, prov, _ = provisioner_env
+        read_only_dir = tmp_path / "readonly"
+        read_only_dir.mkdir()
+        footprint_file = read_only_dir / "footprints.yml"
+
+        # Make dir read-only
+        read_only_dir.chmod(0o555)
+
+        mocker.patch.dict(
+            os.environ, {"OZWALD_FOOTPRINT_DATA": str(footprint_file)}
+        )
+        mock_logger = mocker.patch.object(prov_mod, "logger")
+
+        if os.access(read_only_dir, os.W_OK):
+            pytest.skip("Directory is still writable even after chmod 555")
+
+        prov.run_backend_daemon()
+
+        mock_logger.error.assert_any_call(
+            f"Footprint data directory '{read_only_dir}' is not writable; "
+            "backend daemon cannot run",
+        )
 
     def test_empty_list_retry_on_collision(self, provisioner_env):
         _prov_mod, prov, fake_cache = provisioner_env

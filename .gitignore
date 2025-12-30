@@ -17,3 +17,5 @@ exports/
 dev/documentation/site/
 
 dist/
+
+src/ozwald-footprints.yml

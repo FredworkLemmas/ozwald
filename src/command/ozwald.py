@@ -162,6 +162,12 @@ def action_start_provisioner(
     redis_port: int,
     restart: bool,
 ) -> int:
+    try:
+        svc.validate_footprint_data_env()
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        return 1
+
     print("Starting provisioner stack: network -> redis -> backend -> api ...")
     svc.ensure_provisioner_network()
     svc.start_provisioner_redis(port=redis_port, restart=restart)

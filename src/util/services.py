@@ -205,11 +205,48 @@ def _docker_group_id() -> Optional[int]:
         return None
 
 
+def validate_footprint_data_env() -> None:
+    """Ensure OZWALD_FOOTPRINT_DATA is set and writable.
+
+    Raises:
+        RuntimeError: If the environment variable is missing or the path
+            is not writable.
+    """
+    path_str = os.environ.get("OZWALD_FOOTPRINT_DATA")
+    if not path_str:
+        raise RuntimeError(
+            "OZWALD_FOOTPRINT_DATA environment variable is not defined"
+        )
+
+    path = Path(path_str)
+    if path.exists():
+        if not os.access(path, os.W_OK):
+            raise RuntimeError(f"Footprint data file '{path}' is not writable")
+    else:
+        parent = path.parent
+        if not parent.exists():
+            raise RuntimeError(
+                f"Parent directory '{parent}' for footprint data does not exist"
+            )
+        if not os.access(parent, os.W_OK):
+            raise RuntimeError(
+                f"Footprint data directory '{parent}' is not writable"
+            )
+
+
 def start_provisioner_backend(
     *,
     restart: bool = True,
     mount_source_dir=False,
 ) -> None:
+    validate_footprint_data_env()
+    footprint_path = Path(os.environ["OZWALD_FOOTPRINT_DATA"]).absolute()
+
+    # Ensure the footprint file exists on the host to prevent Docker
+    # from creating a directory when mounting.
+    if not footprint_path.exists():
+        footprint_path.touch()
+
     container_name = "ozwald-provisioner-backend"
     image_tag = "ozwald-provisioner-backend:latest"
 
@@ -272,7 +309,9 @@ def start_provisioner_backend(
         f"-e OZWALD_CONFIG=/etc/ozwald.yml "
         f"-e OZWALD_PROVISIONER={provisioner_name} "
         f"-e OZWALD_HOST={host_name} "
+        f"-e OZWALD_FOOTPRINT_DATA=/etc/ozwald-footprints.yml "
         f"-v /var/run/docker.sock:/var/run/docker.sock "
+        f"-v {footprint_path}:/etc/ozwald-footprints.yml "
         f"{user_flag}{config_mount}{gpu_opts}{image_tag}"
     )
     _run(cmd, check=True)
@@ -392,16 +431,4 @@ def build_containers(name: Optional[str] = None) -> None:
             print(f"\n✓ Successfully built {image_tag}\n")
         else:
             print(f"\n✗ Failed to build {image_tag}\n")
-
-        # result = _run(f"docker tag {image_tag} localhost:5000/{image_tag}")
-        # if result.returncode == 0:
-        #     print(f"\n✓ Successfully tagged {image_tag}\n")
-        # else:
-        #     print(f"\n✗ Failed to tag {image_tag}\n")
-        #
-        # result = _run(f"docker push localhost:5000/{image_tag}")
-        # if result.returncode == 0:
-        #     print(f"\n✓ Successfully pushed {image_tag}\n")
-        # else:
-        #     print(f"\n✗ Failed to push {image_tag}\n")
     print("\nBuild complete!")

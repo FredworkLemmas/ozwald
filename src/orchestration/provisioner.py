@@ -2,10 +2,9 @@ import os
 import pathlib
 import signal
 import subprocess
-import tempfile
 import time
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Type
 
 import yaml
 from dotenv import load_dotenv
@@ -47,7 +46,7 @@ class SystemProvisioner:
         cache: Optional[Cache] = None,
     ):
         self.config_reader = config_reader
-        self._cache = cache
+        self._cache = cache or self._init_cache()
         self._active_services_cache = (
             ActiveServicesCache(cache) if cache else None
         )
@@ -58,43 +57,43 @@ class SystemProvisioner:
     def get_cache(self) -> Cache:
         return self._cache
 
+    @staticmethod
+    def _init_cache() -> Cache:
+        provisioner_cache = None
+        config_reader = SystemConfigReader.singleton()
+        configured_provisioner_name = os.environ.get(
+            "OZWALD_PROVISIONER",
+        )
+
+        if not configured_provisioner_name:
+            if len(config_reader.provisioners) == 1:
+                configured_provisioner_name = config_reader.provisioners[0].name
+            else:
+                configured_provisioner_name = "unconfigured"
+
+        for provisioner in config_reader.provisioners:
+            if provisioner.name == configured_provisioner_name:
+                provisioner_cache = provisioner.cache
+                break
+
+        if not provisioner_cache:
+            # If we still don't have a cache, and there are
+            # provisioners, maybe we should just use the first one?
+            if config_reader.provisioners:
+                provisioner_cache = config_reader.provisioners[0].cache
+            else:
+                # No provisioners at all; this is a configuration error
+                raise ValueError(
+                    "No provisioners found in configuration",
+                )
+        return provisioner_cache
+
     @classmethod
     def singleton(cls, cache: Optional[Cache] = None):
         global _system_provisioner
         if not _system_provisioner:
             config_reader = SystemConfigReader.singleton()
-
-            if not cache:
-                provisioner_cache = None
-                configured_provisioner_name = os.environ.get(
-                    "OZWALD_PROVISIONER",
-                )
-
-                if not configured_provisioner_name:
-                    if len(config_reader.provisioners) == 1:
-                        configured_provisioner_name = (
-                            config_reader.provisioners[0].name
-                        )
-                    else:
-                        configured_provisioner_name = "unconfigured"
-
-                for provisioner in config_reader.provisioners:
-                    if provisioner.name == configured_provisioner_name:
-                        provisioner_cache = provisioner.cache
-                        break
-
-                if not provisioner_cache:
-                    # If we still don't have a cache, and there are
-                    # provisioners, maybe we should just use the first one?
-                    if config_reader.provisioners:
-                        provisioner_cache = config_reader.provisioners[0].cache
-                    else:
-                        # No provisioners at all; this is a configuration error
-                        raise ValueError(
-                            "No provisioners found in configuration",
-                        )
-            else:
-                provisioner_cache = cache
+            provisioner_cache = cache or cls._init_cache()
 
             _system_provisioner = cls(
                 config_reader=config_reader,
@@ -270,6 +269,339 @@ class SystemProvisioner:
 
         return resources
 
+    def _validate_active_services_cache_initialized(self) -> bool:
+        if not self._active_services_cache:
+            logger.error(
+                "Active services cache not initialized; "
+                "backend daemon cannot run",
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _validate_footprint_data_path_defined() -> bool:
+        footprint_path_str = os.environ.get("OZWALD_FOOTPRINT_DATA")
+        if not footprint_path_str:
+            logger.error(
+                "OZWALD_FOOTPRINT_DATA environment variable is not defined; "
+                "backend daemon cannot run",
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _validate_footprint_data_file_is_writable() -> bool:
+        footprint_path_str = os.environ.get("OZWALD_FOOTPRINT_DATA")
+        footprint_path = pathlib.Path(footprint_path_str)
+        if footprint_path.exists():
+            if not os.access(footprint_path, os.W_OK):
+                logger.error(
+                    f"Footprint data file '{footprint_path}' is not writable; "
+                    "backend daemon cannot run"
+                )
+                return False
+        else:
+            parent = footprint_path.parent
+            if not parent.exists():
+                logger.error(
+                    f"Parent directory '{parent}' for "
+                    f"footprint data: {footprint_path} does not exist;"
+                    "backend daemon cannot run"
+                )
+                return False
+            if not os.access(parent, os.W_OK):
+                logger.error(
+                    f"Footprint data directory '{parent}' is not writable; "
+                    "backend daemon cannot run"
+                )
+                return False
+
+        return True
+
+    def _get_service_class_from_service_info(
+        self, svc_info: ServiceInformation
+    ) -> Optional[Type["BaseProvisionableService"]]:
+        # Resolve the service definition to get the concrete
+        # service type
+        service_def = self.config_reader.get_service_by_name(
+            svc_info.service,
+        )
+        if not service_def:
+            logger.error(
+                (f"Service definition '{svc_info.service}' not ")
+                + (f"found for active service '{svc_info.name}'"),
+            )
+            return None
+
+        service_type_str = getattr(
+            service_def.type,
+            "value",
+            str(service_def.type),
+        )
+
+        # Lookup the service class
+        return BaseProvisionableService._lookup_service(
+            service_type_str,
+        )
+
+    def _start_service(
+        self,
+        svc_info: ServiceInformation,
+        service_cls: Type["BaseProvisionableService"],
+        now: datetime,
+    ) -> bool:
+        updated = False
+        logger.info("service is starting")
+        # Check duplicate initiation within timeout
+        start_initiated_iso = svc_info.info.get(
+            "start_initiated",
+        )
+        if start_initiated_iso:
+            started_when = datetime.fromisoformat(
+                start_initiated_iso,
+            )
+            if (now - started_when).total_seconds() < SERVICE_START_TIMEOUT:
+                logger.info(
+                    (
+                        "Duplicate start request "
+                        "ignored for service '%s': "
+                        "start already initiated at %s"
+                    ),
+                    svc_info.name,
+                    start_initiated_iso,
+                )
+                return False
+
+        # Instantiate and start the service
+        try:
+            service_instance = service_cls(
+                service_info=svc_info,
+            )
+        except Exception as e:
+            logger.error(
+                ("Failed to initialize service instance for '%s': %s(%s)"),
+                svc_info.name,
+                e.__class__.__name__,
+                e,
+            )
+            return False
+
+        # Record start initiation before starting
+        svc_info.info["start_initiated"] = now.isoformat()
+        updated = True
+
+        try:
+            logger.info(
+                f"starting service: {svc_info.name}",
+            )
+            service_instance.start()
+        except Exception as e:
+            logger.error(
+                ("Error starting service '%s': %s(%s)"),
+                svc_info.name,
+                e.__class__.__name__,
+                e,
+            )
+            # Do not set completed on failure
+        else:
+            # Mark start completed immediately after
+            # initiating start
+            svc_info.info["start_completed"] = datetime.now().isoformat()
+            updated = True
+
+        return updated
+
+    def _stop_service(
+        self,
+        svc_info: ServiceInformation,
+        service_cls: Type["BaseProvisionableService"],
+        now: datetime,
+    ) -> bool:
+        updated = False
+        stop_initiated_iso = svc_info.info.get(
+            "stop_initiated",
+        )
+        if stop_initiated_iso:
+            stopped_when = datetime.fromisoformat(
+                stop_initiated_iso,
+            )
+            if (now - stopped_when).total_seconds() < SERVICE_STOP_TIMEOUT:
+                logger.info(
+                    (
+                        "Duplicate stop request "
+                        "ignored for service '%s': "
+                        "stop already initiated at %s"
+                    ),
+                    svc_info.name,
+                    stop_initiated_iso,
+                )
+                return False
+
+        # Instantiate and stop the service
+        try:
+            service_instance = service_cls(
+                service_info=svc_info,
+            )
+        except Exception as e:
+            logger.error(
+                ("Failed to initialize service instance for stopping '%s': %s"),
+                svc_info.name,
+                e,
+            )
+            return False
+
+        # Record stop initiation prior to stopping
+        svc_info.info["stop_initiated"] = now.isoformat()
+        updated = True
+
+        try:
+            # Some services may not implement stop yet
+            stop_fn = getattr(
+                service_instance,
+                "stop",
+                None,
+            )
+            if callable(stop_fn):
+                stop_fn()
+            else:
+                logger.warning(
+                    (
+                        "Service class '%s' has no 'stop' "
+                        "method; marking as stopped"
+                    ),
+                    service_cls.__name__,
+                )
+        except Exception as e:
+            logger.error(
+                "Error stopping service '%s': %s",
+                svc_info.name,
+                e,
+            )
+        finally:
+            svc_info.info["stop_completed"] = datetime.now().isoformat()
+            updated = True
+
+        return updated
+
+    def _handle_requests(self):
+        # Load the current snapshot of active services
+        active_services: List[ServiceInformation] = (
+            self._active_services_cache.get_services()
+        )
+
+        # If there are no active services, check for footprinting
+        # requests
+        if not active_services and self._footprint_request_cache:
+            logger.info("No active services, checking footprinting requests")
+            requests = self._footprint_request_cache.get_requests()
+            if requests:
+                logger.info("footprint requests found")
+                # Process one request at a time
+                self._handle_footprint_request(requests[0])
+                # After processing, loop again (do not sleep long)
+                time.sleep(0.2)
+                return
+
+        if not active_services:
+            time.sleep(BACKEND_DAEMON_SLEEP_TIME)
+            return
+
+        updated = False
+        now = datetime.now()
+
+        for idx, svc_info in enumerate(active_services):
+            logger.info("examining service: %s", svc_info)
+            try:
+                # Only act on services with STARTING or STOPPING status
+                if svc_info.status not in (
+                    ServiceStatus.STARTING,
+                    ServiceStatus.STOPPING,
+                ):
+                    continue
+
+                # lookup service class
+                service_cls = self._get_service_class_from_service_info(
+                    svc_info,
+                )
+                if not service_cls:
+                    logger.error(
+                        "No provisionable service implementation found"
+                        f" for type '{svc_info.service}' "
+                        f"(service '{svc_info.name}')",
+                    )
+                    continue
+
+                # Ensure info dict exists
+                if svc_info.info is None:
+                    svc_info.info = {}
+
+                logger.info(
+                    "Processing service '%s' in backend loop",
+                    svc_info.name,
+                )
+
+                # STARTING flow
+                if svc_info.status == ServiceStatus.STARTING:
+                    updated = self._start_service(svc_info, service_cls, now)
+
+                # STOPPING flow
+                elif svc_info.status == ServiceStatus.STOPPING:
+                    updated = self._stop_service(svc_info, service_cls, now)
+
+                # Assign the possibly updated object back
+                active_services[idx] = svc_info
+
+            except Exception as e:
+                logger.error(
+                    (
+                        "Unexpected error processing service '%s' "
+                        "in backend loop: %s"
+                    ),
+                    getattr(svc_info, "name", "?"),
+                    e,
+                )
+
+        # Persist updates if any
+        if updated:
+            # Remove services that have completed stopping to avoid
+            # lingering STOPPING entries and races with service-level
+            # cache updates. A STOPPING service with a stop_completed
+            # marker should be removed from the active list.
+            active_services = [
+                s
+                for s in active_services
+                if not (
+                    s.status == ServiceStatus.STOPPING
+                    and getattr(s, "info", None)
+                    and s.info.get("stop_completed")
+                )
+            ]
+
+            deadline = time.time() + 5.0
+            while True:
+                try:
+                    self._active_services_cache.set_services(
+                        active_services,
+                    )
+                    break
+                except (WriteCollision, RuntimeError) as e:
+                    if time.time() >= deadline:
+                        logger.error(
+                            "Failed to persist active services: %s",
+                            e,
+                        )
+                        break
+                    time.sleep(0.5)
+                except Exception as e:
+                    logger.error(
+                        (
+                            "Unexpected error while writing active "
+                            "services cache: %s"
+                        ),
+                        e,
+                    )
+                    break
+
     def run_backend_daemon(self):
         """Run the backend daemon
         - Loops until a termination signal is received
@@ -277,11 +609,16 @@ class SystemProvisioner:
         - Processes active services: starting and stopping
         - Handles duplicate start/stop requests within timeout windows
         """
-        if not self._active_services_cache:
-            logger.error(
-                "Active services cache not initialized; "
-                "backend daemon cannot run",
-            )
+        # sanity check: active services cache must be initialized
+        if not self._validate_active_services_cache_initialized():
+            return
+
+        # sanity check: footprinting data path envvar must be defined
+        if not self._validate_footprint_data_path_defined():
+            return
+
+        # sanity check: footprinting data file must be writable
+        if not self._validate_footprint_data_file_is_writable():
             return
 
         # Graceful shutdown handling
@@ -309,285 +646,7 @@ class SystemProvisioner:
 
         while running:
             try:
-                # Load the current snapshot of active services
-                active_services: List[ServiceInformation] = (
-                    self._active_services_cache.get_services()
-                )
-
-                # If there are no active services, check for footprinting
-                # requests
-                if not active_services and self._footprint_request_cache:
-                    requests = self._footprint_request_cache.get_requests()
-                    if requests:
-                        # Process one request at a time
-                        self._handle_footprint_request(requests[0])
-                        # After processing, loop again (do not sleep long)
-                        time.sleep(0.2)
-                        continue
-
-                if not active_services:
-                    time.sleep(BACKEND_DAEMON_SLEEP_TIME)
-                    continue
-
-                updated = False
-                now = datetime.now()
-
-                for idx, svc_info in enumerate(active_services):
-                    logger.info("examining service: %s", svc_info)
-                    try:
-                        # Only act on services with STARTING or STOPPING status
-                        if svc_info.status not in (
-                            ServiceStatus.STARTING,
-                            ServiceStatus.STOPPING,
-                        ):
-                            continue
-
-                        # Resolve the service definition to get the concrete
-                        # service type
-                        service_def = self.config_reader.get_service_by_name(
-                            svc_info.service,
-                        )
-                        if not service_def:
-                            logger.error(
-                                (
-                                    "Service definition "
-                                    f"'{svc_info.service}' not "
-                                )
-                                + (
-                                    "found for active service "
-                                    f"'{svc_info.name}'"
-                                ),
-                            )
-                            continue
-
-                        service_type_str = getattr(
-                            service_def.type,
-                            "value",
-                            str(service_def.type),
-                        )
-
-                        # Lookup the service class
-                        service_cls = BaseProvisionableService._lookup_service(
-                            service_type_str,
-                        )
-                        if not service_cls:
-                            logger.error(
-                                "No provisionable service implementation found"
-                                f" for type '{service_type_str}' "
-                                f"(service '{svc_info.name}')",
-                            )
-                            continue
-
-                        # Ensure info dict exists
-                        if svc_info.info is None:
-                            svc_info.info = {}
-
-                        logger.info(
-                            "Processing service '%s' in backend loop",
-                            svc_info.name,
-                        )
-
-                        # STARTING flow
-                        if svc_info.status == ServiceStatus.STARTING:
-                            logger.info("service is starting")
-                            # Check duplicate initiation within timeout
-                            start_initiated_iso = svc_info.info.get(
-                                "start_initiated",
-                            )
-                            logger.info("past info check")
-                            if start_initiated_iso:
-                                try:
-                                    started_when = datetime.fromisoformat(
-                                        start_initiated_iso,
-                                    )
-                                    if (
-                                        now - started_when
-                                    ).total_seconds() < SERVICE_START_TIMEOUT:
-                                        logger.info(
-                                            (
-                                                "Duplicate start request "
-                                                "ignored for service '%s': "
-                                                "start already initiated at %s"
-                                            ),
-                                            svc_info.name,
-                                            start_initiated_iso,
-                                        )
-                                        continue
-                                except Exception:
-                                    # If timestamp malformed, proceed with start
-                                    pass
-
-                            # Instantiate and start the service
-                            try:
-                                service_instance = service_cls(
-                                    service_info=svc_info,
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    (
-                                        "Failed to initialize service "
-                                        "instance for '%s': %s(%s)"
-                                    ),
-                                    svc_info.name,
-                                    e.__class__.__name__,
-                                    e,
-                                )
-                                continue
-
-                            # Record start initiation before starting
-                            svc_info.info["start_initiated"] = now.isoformat()
-                            updated = True
-
-                            try:
-                                logger.info(
-                                    f"starting service: {svc_info.name}",
-                                )
-                                service_instance.start()
-                            except Exception as e:
-                                logger.error(
-                                    ("Error starting service '%s': %s(%s)"),
-                                    svc_info.name,
-                                    e.__class__.__name__,
-                                    e,
-                                )
-                                # Do not set completed on failure
-                            else:
-                                # Mark start completed immediately after
-                                # initiating start
-                                svc_info.info["start_completed"] = (
-                                    datetime.now().isoformat()
-                                )
-                                updated = True
-
-                        # STOPPING flow
-                        elif svc_info.status == ServiceStatus.STOPPING:
-                            stop_initiated_iso = svc_info.info.get(
-                                "stop_initiated",
-                            )
-                            if stop_initiated_iso:
-                                try:
-                                    stopped_when = datetime.fromisoformat(
-                                        stop_initiated_iso,
-                                    )
-                                    if (
-                                        now - stopped_when
-                                    ).total_seconds() < SERVICE_STOP_TIMEOUT:
-                                        logger.info(
-                                            (
-                                                "Duplicate stop request "
-                                                "ignored for service '%s': "
-                                                "stop already initiated at %s"
-                                            ),
-                                            svc_info.name,
-                                            stop_initiated_iso,
-                                        )
-                                        continue
-                                except Exception:
-                                    pass
-
-                            # Instantiate and stop the service
-                            try:
-                                service_instance = service_cls(
-                                    service_info=svc_info,
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    (
-                                        "Failed to initialize service "
-                                        "instance for stopping '%s': %s"
-                                    ),
-                                    svc_info.name,
-                                    e,
-                                )
-                                continue
-
-                            # Record stop initiation prior to stopping
-                            svc_info.info["stop_initiated"] = now.isoformat()
-                            updated = True
-
-                            try:
-                                # Some services may not implement stop yet
-                                stop_fn = getattr(
-                                    service_instance,
-                                    "stop",
-                                    None,
-                                )
-                                if callable(stop_fn):
-                                    stop_fn()
-                                else:
-                                    logger.warning(
-                                        (
-                                            "Service class '%s' has no 'stop' "
-                                            "method; marking as stopped"
-                                        ),
-                                        service_cls.__name__,
-                                    )
-                            except Exception as e:
-                                logger.error(
-                                    "Error stopping service '%s': %s",
-                                    svc_info.name,
-                                    e,
-                                )
-                            finally:
-                                svc_info.info["stop_completed"] = (
-                                    datetime.now().isoformat()
-                                )
-                                updated = True
-
-                        # Assign the possibly updated object back
-                        active_services[idx] = svc_info
-
-                    except Exception as e:
-                        logger.error(
-                            (
-                                "Unexpected error processing service '%s' "
-                                "in backend loop: %s"
-                            ),
-                            getattr(svc_info, "name", "?"),
-                            e,
-                        )
-
-                # Persist updates if any
-                if updated:
-                    # Remove services that have completed stopping to avoid
-                    # lingering STOPPING entries and races with service-level
-                    # cache updates. A STOPPING service with a stop_completed
-                    # marker should be removed from the active list.
-                    active_services = [
-                        s
-                        for s in active_services
-                        if not (
-                            s.status == ServiceStatus.STOPPING
-                            and getattr(s, "info", None)
-                            and s.info.get("stop_completed")
-                        )
-                    ]
-
-                    deadline = time.time() + 5.0
-                    while True:
-                        try:
-                            self._active_services_cache.set_services(
-                                active_services,
-                            )
-                            break
-                        except (WriteCollision, RuntimeError) as e:
-                            if time.time() >= deadline:
-                                logger.error(
-                                    "Failed to persist active services: %s",
-                                    e,
-                                )
-                                break
-                            time.sleep(0.5)
-                        except Exception as e:
-                            logger.error(
-                                (
-                                    "Unexpected error while writing active "
-                                    "services cache: %s"
-                                ),
-                                e,
-                            )
-                            break
-
+                self._handle_requests()
             except Exception as e:
                 logger.error("Backend daemon loop encountered an error: %s", e)
 
@@ -670,10 +729,15 @@ class SystemProvisioner:
         """Handle a single footprinting request: footprint services and write
         YAML, then remove from cache.
         """
-        if not self._footprint_request_cache or not self._active_services_cache:
+        if not self._footprint_request_cache:
+            logger.debug(
+                "Footprint request cache not initialized, cannot "
+                "process footprint request"
+            )
             return
 
         # Mark as in-progress
+        logger.debug('marking footprint request "in-progress"')
         request.footprint_in_progress = True
         request.footprint_started_at = datetime.now()
         self._footprint_request_cache.update_footprint_request(request)
@@ -699,6 +763,7 @@ class SystemProvisioner:
                     )
         else:
             targets = request.services or []
+        logger.debug(f"footprint targets: {targets}")
 
         # Ensure system is unloaded before footprinting
         if self._active_services_cache.get_services():
@@ -707,8 +772,11 @@ class SystemProvisioner:
 
         # Footprint each target sequentially
         for target in targets:
+            logger.info(f"footprinting service: {target.service_name}")
             try:
+                logger.info("pre-footprint")
                 self._footprint_single_service(target)
+                logger.info("post-footprint (before except)")
             except Exception as e:
                 logger.error(
                     "Footprinting error for %s:%s - %s",
@@ -716,9 +784,13 @@ class SystemProvisioner:
                     target.profile,
                     e,
                 )
+            logger.info("post-footprint (after except)")
 
         # Remove the handled request from cache
         try:
+            logger.debug(
+                f"removing completed footprint request {request.request_id}"
+            )
             current = self._footprint_request_cache.get_requests()
             remaining = [
                 r for r in current if r.request_id != request.request_id
@@ -736,6 +808,24 @@ class SystemProvisioner:
         target: ConfiguredServiceIdentifier,
     ) -> None:
         """Footprint a single configured service/profile."""
+        logger.debug("entered _footprint_single_service")
+
+        # Lookup service class first
+        tmp_svc_info = ServiceInformation(
+            name="temp",
+            service=target.service_name,
+            profile=target.profile,
+            status=ServiceStatus.STARTING,
+            info={},
+        )
+        service_cls = self._get_service_class_from_service_info(tmp_svc_info)
+        if not service_cls:
+            logger.error(
+                "No provisionable service implementation found for type '%s'",
+                target.service_name,
+            )
+            return
+
         # Measure pre state
         pre = HostResources.inspect_host()
 
@@ -743,6 +833,7 @@ class SystemProvisioner:
         inst_name = f"foot-{target.service_name}-{target.profile}"
 
         # Activate the service
+        logger.debug(f"starting service {inst_name}")
         svc_info = ServiceInformation(
             name=inst_name,
             service=target.service_name,
@@ -752,8 +843,14 @@ class SystemProvisioner:
         )
         self.update_services([svc_info])
 
+        # Manually trigger start because the main loop is blocked by us
+        self._start_service(svc_info, service_cls, datetime.now())
+        # Persist the start_completed marker to cache
+        self._active_services_cache.set_services([svc_info])
+
         # Wait for start completed marker
         self._wait_for_start_completed(inst_name, timeout=60.0)
+        logger.debug(f"service {inst_name} started successfully")
 
         # Measure post state
         post = HostResources.inspect_host()
@@ -769,11 +866,23 @@ class SystemProvisioner:
         }
 
         # Persist to YAML
+        logger.debug(f"writing footprint usage for {target.service_name}")
         self._write_footprint_usage(target.service_name, target.profile, usage)
 
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
+        logger.debug(f"stopping service {inst_name}")
         self.update_services([])
+
+        # Manually trigger stop because the main loop is blocked by us
+        # We need the service info with status STOPPING
+        active = self._active_services_cache.get_services()
+        target_svc = next((s for s in active if s.name == inst_name), None)
+        if target_svc:
+            self._stop_service(target_svc, service_cls, datetime.now())
+            # Persist stop_completed to cache
+            self._active_services_cache.set_services([target_svc])
+
         self._wait_for_stop_completed(inst_name, timeout=60.0)
 
         # After stop, clear cache to keep system unloaded
@@ -831,18 +940,25 @@ class SystemProvisioner:
         usage: dict,
     ) -> None:
         """Write or update the YAML file with usage info."""
-        # Resolve output path, preferring environment override.
-        # Avoid hardcoded /tmp to satisfy Bandit B108 and improve portability.
-        default_path = os.path.join(
-            tempfile.gettempdir(),
-            "ozwald-footprints.yml",
-        )
-        path = os.environ.get("OZWALD_FOOTPRINT_DATA", default_path)
-        parent_dir = os.path.dirname(path) or "."
 
+        # ensure path is defined
+        path = os.environ.get("OZWALD_FOOTPRINT_DATA")
+        if not path:
+            logger.error(
+                "OZWALD_FOOTPRINT_DATA environment variable is not defined; "
+                "cannot write footprint data"
+            )
+            return
+
+        # determine parent directory
+        # parent_dir = os.path.dirname(path) or "."
+
+        # read existing data, if any
         data = {}
+        # file_exists = False
         try:
             if pathlib.Path(path).exists():
+                # file_exists = True
                 with pathlib.Path(path).open(encoding="utf-8") as f:
                     loaded = yaml.safe_load(f)
                     if isinstance(loaded, dict):
@@ -857,28 +973,33 @@ class SystemProvisioner:
         data[service_name] = svc_block
 
         try:
-            # Ensure parent directory exists with restrictive permissions
-            pathlib.Path(parent_dir).mkdir(
-                mode=0o700, exist_ok=True, parents=True
-            )
+            # open the file and write data to it
+            with pathlib.Path(path).open("w", encoding="utf-8") as f:
+                # data.setdefault(service_name, {})[profile] = usage
+                yaml.safe_dump(data, f)
 
-            # Atomic write: write to a temp file in the same directory,
-            # then replace
-            fd, tmp_path = tempfile.mkstemp(
-                prefix=".ozwald-footprints.",
-                dir=parent_dir,
-                text=True,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    yaml.safe_dump(data, f, sort_keys=True)
-                # Restrict permissions on the new file
-                pathlib.Path(tmp_path).chmod(0o600)
-                pathlib.Path(tmp_path).replace(path)
-            finally:
-                # In case of exceptions before replace, try to clean up
-                if pathlib.Path(tmp_path).exists():
-                    pathlib.Path(tmp_path).unlink()
+            # # Ensure parent directory exists with restrictive permissions
+            # pathlib.Path(parent_dir).mkdir(
+            #     mode=0o700, exist_ok=True, parents=True
+            # )
+            #
+            # # Atomic write: write to a temp file in the same directory,
+            # # then replace
+            # fd, tmp_path = tempfile.mkstemp(
+            #     prefix=".ozwald-footprints.",
+            #     dir=parent_dir,
+            #     text=True,
+            # )
+            # try:
+            #     with os.fdopen(fd, "w", encoding="utf-8") as f:
+            #         yaml.safe_dump(data, f, sort_keys=True)
+            #     # Restrict permissions on the new file
+            #     pathlib.Path(tmp_path).chmod(0o600)
+            #     pathlib.Path(tmp_path).replace(path)
+            # finally:
+            #     # In case of exceptions before replace, try to clean up
+            #     if pathlib.Path(tmp_path).exists():
+            #         pathlib.Path(tmp_path).unlink()
         except Exception as e:
             logger.error("Failed to write footprint data to '%s': %s", path, e)
 
