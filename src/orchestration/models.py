@@ -58,6 +58,16 @@ class FootprintAction(BaseModel):
     footprint_started_at: datetime | None = None
 
 
+class FootprintLogLines(BaseModel):
+    service_name: str
+    profile: str | None = None
+    variety: str | None = None
+    request_datetime: datetime
+    is_top_n: bool
+    is_bottom_n: bool
+    lines: list[str]
+
+
 # ============================================================================
 # Service Definition Models (Templates)
 # ============================================================================
@@ -133,10 +143,37 @@ class ServiceDefinition(BaseModel):
 
 
 # ============================================================================
+# Service Usage Models (Runtime)
+# ============================================================================
+# class SystemUsageDelta(BaseModel):
+#     cpu_cores: float = 0.0
+#     memory_gb: float = 0.0
+#     vram_gb: float = 0.0
+
+
+# class ServiceInstanceUsage(BaseModel):
+#     service_name: str
+#     profile: str | None
+#     variety: str | None
+#     usage: SystemUsageDelta
+
+
+class ServiceInstanceUsage(BaseModel):
+    cpu_cores: float = 0.0
+    memory_gb: float = 0.0
+    vram_gb: float = 0.0
+
+
+class SystemUsageDelta(BaseModel):
+    service_name: str
+    profile: str | None
+    variety: str | None
+    usage: ServiceInstanceUsage
+
+
+# ============================================================================
 # Service Instance Models (Runtime)
 # ============================================================================
-
-
 class ServiceStatus(str, Enum):
     STARTING = "starting"
     STOPPING = "stopping"

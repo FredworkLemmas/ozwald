@@ -7,6 +7,7 @@ and provides information about available resources.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import uuid
 from datetime import datetime
@@ -18,6 +19,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from hosts.resources import HostResources
 from orchestration.models import (
     FootprintAction,
+    FootprintLogLines,
     Resource,
     Service,
     ServiceDefinition,
@@ -289,6 +291,118 @@ async def post_footprint_request(
         ) from e
 
     return {"status": "accepted", "request_id": action.request_id}
+
+
+@app.get(
+    "/srv/services/footprint-logs/{service_name}/",
+    response_model=FootprintLogLines,
+    summary="Get footprint logs",
+    description="Retrieve docker logs for the footprint run of the container",
+)
+async def get_footprint_logs(
+    service_name: str,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+    authenticated: bool = Depends(verify_system_key),
+) -> FootprintLogLines:
+    """Retrieve docker logs for the footprint run of a service."""
+    provisioner = SystemProvisioner.singleton()
+    services = provisioner.get_configured_services()
+    service_def = next(
+        (s for s in services if s.service_name == service_name), None
+    )
+    if not service_def:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Service {service_name} not found",
+        )
+
+    # Validation
+    has_profiles = bool(service_def.profiles)
+    has_varieties = bool(service_def.varieties)
+
+    if not has_profiles and profile is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Service {service_name} does not have profiles",
+        )
+    if has_profiles and profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Profile is required for service {service_name}",
+        )
+    if profile and profile not in (service_def.profiles or {}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Profile {profile} not found for service {service_name}",
+        )
+
+    if not has_varieties and variety is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Service {service_name} does not have varieties",
+        )
+    if has_varieties and variety is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Variety is required for service {service_name}",
+        )
+    if variety and variety not in (service_def.varieties or {}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Variety {variety} not found for service {service_name}",
+        )
+
+    inst_name = f"footprinter--{service_name}--{profile}--{variety}"
+    container_name = f"service-{inst_name}"
+
+    cmd = ["docker", "logs"]
+    if last is not None:
+        cmd.extend(["--tail", str(last)])
+    cmd.append(container_name)
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            # Container might not exist
+            return FootprintLogLines(
+                service_name=service_name,
+                profile=profile,
+                variety=variety,
+                request_datetime=datetime.now(),
+                is_top_n=top is not None,
+                is_bottom_n=last is not None,
+                lines=[],
+            )
+
+        logs = result.stdout + result.stderr
+        lines = logs.splitlines()
+
+        if top is not None:
+            lines = lines[:top]
+
+        return FootprintLogLines(
+            service_name=service_name,
+            profile=profile,
+            variety=variety,
+            request_datetime=datetime.now(),
+            is_top_n=top is not None,
+            is_bottom_n=last is not None,
+            lines=lines,
+        )
+    except Exception as e:
+        logger.error(f"Failed to retrieve logs for {container_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve logs: {str(e)}",
+        ) from e
 
 
 # Allow running this module directly, e.g. `python -m api.provisioner`
