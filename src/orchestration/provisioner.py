@@ -1,10 +1,11 @@
+import itertools
 import os
 import pathlib
 import signal
 import subprocess
 import time
 from datetime import datetime
-from typing import List, Optional, Type
+from typing import Iterable, List, Optional, Type
 
 import yaml
 from dotenv import load_dotenv
@@ -24,7 +25,9 @@ from .models import (
     Service,
     ServiceDefinition,
     ServiceInformation,
+    ServiceInstanceUsage,
     ServiceStatus,
+    SystemUsageDelta,
 )
 
 BACKEND_DAEMON_SLEEP_TIME = 2.0
@@ -743,24 +746,41 @@ class SystemProvisioner:
         self._footprint_request_cache.update_footprint_request(request)
 
         # Determine targets
+        def target_iterator(
+            service_def: "ServiceDefinition",
+        ) -> Iterable[ConfiguredServiceIdentifier]:
+            if service_def.profiles and service_def.varieties:
+                for profile, variety in itertools.product(
+                    service_def.profiles.keys(), service_def.varieties.keys()
+                ):
+                    yield ConfiguredServiceIdentifier(
+                        service_name=service_def.service_name,
+                        profile=profile,
+                        variety=variety,
+                    )
+            elif service_def.profiles:
+                for profile in service_def.profiles:
+                    yield ConfiguredServiceIdentifier(
+                        service_name=service_def.service_name,
+                        profile=profile,
+                    )
+            elif service_def.varieties:
+                for variety in service_def.varieties:
+                    yield ConfiguredServiceIdentifier(
+                        service_name=service_def.service_name,
+                        variety=variety,
+                    )
+            else:
+                yield ConfiguredServiceIdentifier(
+                    service_name=service_def.service_name,
+                )
+
         targets: List[ConfiguredServiceIdentifier] = []
         if request.footprint_all_services:
             for svc_def in self.config_reader.services:
-                if svc_def.profiles:
-                    for prof in svc_def.profiles:
-                        targets.append(
-                            ConfiguredServiceIdentifier(
-                                service_name=svc_def.service_name,
-                                profile=prof.name,
-                            ),
-                        )
-                else:
-                    targets.append(
-                        ConfiguredServiceIdentifier(
-                            service_name=svc_def.service_name,
-                            profile="default",
-                        ),
-                    )
+                for target in target_iterator(svc_def):
+                    targets.append(target)
+
         else:
             targets = request.services or []
         logger.debug(f"footprint targets: {targets}")
@@ -779,9 +799,10 @@ class SystemProvisioner:
                 logger.info("post-footprint (before except)")
             except Exception as e:
                 logger.error(
-                    "Footprinting error for %s:%s - %s",
+                    "Footprinting error for %s[%s][%s] - %s",
                     target.service_name,
                     target.profile,
+                    target.variety,
                     e,
                 )
             logger.info("post-footprint (after except)")
@@ -803,6 +824,15 @@ class SystemProvisioner:
                 e,
             )
 
+    def _target_service_instance_name(
+        self, target: ConfiguredServiceIdentifier
+    ) -> str:
+        inst_name = (
+            f"footprinter--{target.service_name}--{target.profile}--"
+            f"{target.variety}"
+        )
+        return inst_name
+
     def _footprint_single_service(
         self,
         target: ConfiguredServiceIdentifier,
@@ -815,6 +845,7 @@ class SystemProvisioner:
             name="temp",
             service=target.service_name,
             profile=target.profile,
+            variety=target.variety,
             status=ServiceStatus.STARTING,
             info={},
         )
@@ -830,7 +861,7 @@ class SystemProvisioner:
         pre = HostResources.inspect_host()
 
         # Construct a unique service instance name
-        inst_name = f"foot-{target.service_name}-{target.profile}"
+        inst_name = self._target_service_instance_name(target)
 
         # Activate the service
         logger.debug(f"starting service {inst_name}")
@@ -838,6 +869,7 @@ class SystemProvisioner:
             name=inst_name,
             service=target.service_name,
             profile=target.profile,
+            variety=target.variety,
             status=ServiceStatus.STARTING,
             info={},
         )
@@ -867,7 +899,14 @@ class SystemProvisioner:
 
         # Persist to YAML
         logger.debug(f"writing footprint usage for {target.service_name}")
-        self._write_footprint_usage(target.service_name, target.profile, usage)
+        self._write_footprint_usage(
+            SystemUsageDelta(
+                service_name=target.service_name,
+                profile=target.profile,
+                variety=target.variety,
+                usage=ServiceInstanceUsage(**usage),
+            )
+        )
 
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
@@ -935,12 +974,8 @@ class SystemProvisioner:
 
     def _write_footprint_usage(
         self,
-        service_name: str,
-        profile: str,
-        usage: dict,
+        system_usage_delta: "SystemUsageDelta",
     ) -> None:
-        """Write or update the YAML file with usage info."""
-
         # ensure path is defined
         path = os.environ.get("OZWALD_FOOTPRINT_DATA")
         if not path:
@@ -950,58 +985,40 @@ class SystemProvisioner:
             )
             return
 
-        # determine parent directory
-        # parent_dir = os.path.dirname(path) or "."
-
-        # read existing data, if any
-        data = {}
-        # file_exists = False
+        # read yaml file as list of ServiceInstanceUsage objects and substitute
+        # the footprinted service usage record, if possible
+        usage_records = []
         try:
-            if pathlib.Path(path).exists():
-                # file_exists = True
-                with pathlib.Path(path).open(encoding="utf-8") as f:
-                    loaded = yaml.safe_load(f)
-                    if isinstance(loaded, dict):
-                        data = loaded
-        except Exception as e:
-            logger.warning(
-                "Could not read footprint data file '%s': %s", path, e
-            )
+            with open(path) as f:
+                service_instance_usage_records = yaml.safe_load(f) or []
+        except FileNotFoundError:
+            pass
+        written = False
+        for usage_rec_dict in service_instance_usage_records:
+            usage_rec = SystemUsageDelta(**usage_rec_dict)
+            if (
+                usage_rec.service_name == system_usage_delta.service_name
+                and usage_rec.profile == system_usage_delta.profile
+                and usage_rec.variety == system_usage_delta.variety
+            ):
+                usage_records.append(system_usage_delta)
+                written = True
+            else:
+                usage_records.append(usage_rec)
 
-        svc_block = data.get(service_name, {})
-        svc_block[profile] = usage
-        data[service_name] = svc_block
+        # sort the list of usage records by service_name, profile, variety
+        def sortkey(rec: SystemUsageDelta):
+            return rec.service_name, rec.profile, rec.variety
 
-        try:
-            # open the file and write data to it
-            with pathlib.Path(path).open("w", encoding="utf-8") as f:
-                # data.setdefault(service_name, {})[profile] = usage
-                yaml.safe_dump(data, f)
+        usage_records.sort(key=sortkey)
 
-            # # Ensure parent directory exists with restrictive permissions
-            # pathlib.Path(parent_dir).mkdir(
-            #     mode=0o700, exist_ok=True, parents=True
-            # )
-            #
-            # # Atomic write: write to a temp file in the same directory,
-            # # then replace
-            # fd, tmp_path = tempfile.mkstemp(
-            #     prefix=".ozwald-footprints.",
-            #     dir=parent_dir,
-            #     text=True,
-            # )
-            # try:
-            #     with os.fdopen(fd, "w", encoding="utf-8") as f:
-            #         yaml.safe_dump(data, f, sort_keys=True)
-            #     # Restrict permissions on the new file
-            #     pathlib.Path(tmp_path).chmod(0o600)
-            #     pathlib.Path(tmp_path).replace(path)
-            # finally:
-            #     # In case of exceptions before replace, try to clean up
-            #     if pathlib.Path(tmp_path).exists():
-            #         pathlib.Path(tmp_path).unlink()
-        except Exception as e:
-            logger.error("Failed to write footprint data to '%s': %s", path, e)
+        # add the record if it wasn't subbed in before
+        if not written:
+            usage_records.append(system_usage_delta)
+
+        # write the updated yaml file
+        with open(path, "w") as f:
+            yaml.safe_dump([rec.model_dump() for rec in usage_records], f)
 
     def _init_service(
         self,

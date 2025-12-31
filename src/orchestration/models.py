@@ -133,6 +133,22 @@ class ServiceDefinition(BaseModel):
 
 
 # ============================================================================
+# Service Usage Models (Runtime)
+# ============================================================================
+class SystemUsageDelta(BaseModel):
+    cpu_cores: float = 0.0
+    memory_gb: float = 0.0
+    vram_gb: float = 0.0
+
+
+class ServiceInstanceUsage(BaseModel):
+    service_name: str
+    profile: str | None
+    variety: str | None
+    usage: SystemUsageDelta
+
+
+# ============================================================================
 # Service Instance Models (Runtime)
 # ============================================================================
 
