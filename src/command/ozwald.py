@@ -515,6 +515,37 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         return 2
 
 
+def action_get_footprint_logs(
+    port: int,
+    service_name: str | None,
+    profile: str | None,
+    variety: str | None,
+    top: int | None,
+    last: int | None,
+) -> int:
+    if not service_name:
+        print("Error: service name is required for get_footprint_logs")
+        return 2
+    try:
+        data = ucli.get_footprint_logs(
+            port=port,
+            service_name=service_name,
+            profile=profile,
+            variety=variety,
+            top=top,
+            last=last,
+        )
+
+        lines = data.get("lines", [])
+        for line in lines:
+            print(line)
+
+        return 0
+    except Exception as e:
+        print(f"Error retrieving footprint logs: {type(e).__name__}({e})")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ozwald",
@@ -531,6 +562,7 @@ def build_parser() -> argparse.ArgumentParser:
             "show_host_resources",
             "update_services",
             "footprint_services",
+            "get_footprint_logs",
             "status",
         ],
     )
@@ -584,12 +616,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="For footprint_services: footprint all services",
     )
     parser.add_argument(
+        "--profile",
+        help="For get_footprint_logs: profile for footprint logs",
+    )
+    parser.add_argument(
+        "--variety",
+        help="For get_footprint_logs: variety for footprint logs",
+    )
+    parser.add_argument(
+        "--top",
+        type=int,
+        help="For get_footprint_logs: only include the top N lines of logs",
+    )
+    parser.add_argument(
+        "--last",
+        type=int,
+        help="For get_footprint_logs: only include the last N lines of logs",
+    )
+    parser.add_argument(
         "services_spec",
         nargs="?",
         help=(
-            "For update_services/footprint_services: comma-separated entries "
-            "like NAME[service][variety][profile] or "
-            "service[profile][variety]"
+            "For update_services/footprint_services/get_footprint_logs: "
+            "comma-separated entries like NAME[service][variety][profile] "
+            "or service[profile][variety] (or just service name for "
+            "get_footprint_logs)"
         ),
     )
     return parser
@@ -610,6 +661,7 @@ def main(argv: list[str] | None = None) -> int:
         "list_active_services",
         "update_services",
         "footprint_services",
+        "get_footprint_logs",
     }
     if (
         args.action in api_actions
@@ -644,6 +696,15 @@ def main(argv: list[str] | None = None) -> int:
             port_for_api,
             args.services_spec,
             args.all,
+        )
+    if args.action == "get_footprint_logs":
+        return action_get_footprint_logs(
+            port_for_api,
+            args.services_spec,
+            args.profile,
+            args.variety,
+            args.top,
+            args.last,
         )
     if args.action == "status":
         return action_status()

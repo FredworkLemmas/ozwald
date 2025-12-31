@@ -58,6 +58,16 @@ class FootprintAction(BaseModel):
     footprint_started_at: datetime | None = None
 
 
+class FootprintLogLines(BaseModel):
+    service_name: str
+    profile: str | None = None
+    variety: str | None = None
+    request_datetime: datetime
+    is_top_n: bool
+    is_bottom_n: bool
+    lines: list[str]
+
+
 # ============================================================================
 # Service Definition Models (Templates)
 # ============================================================================

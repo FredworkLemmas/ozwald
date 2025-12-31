@@ -120,3 +120,34 @@ def footprint_services(
     if not isinstance(data, dict):
         raise ValueError("Unexpected response format for footprint_services")
     return data
+
+
+def get_footprint_logs(
+    *,
+    service_name: str,
+    port: int = 8000,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Call the provisioner footprint logs endpoint."""
+    url = f"http://localhost:{port}/srv/services/footprint-logs/{service_name}/"
+    params = {}
+    if profile:
+        params["profile"] = profile
+    if variety:
+        params["variety"] = variety
+    if top:
+        params["top"] = top
+    if last:
+        params["last"] = last
+
+    headers = _auth_headers(system_key)
+    resp = http_get(url, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected response format for get_footprint_logs")
+    return data
