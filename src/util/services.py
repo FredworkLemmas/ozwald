@@ -169,6 +169,7 @@ def start_provisioner_api(
         f"-e OZWALD_PROVISIONER={provisioner_name} "
         f"-e OZWALD_CONFIG=/etc/ozwald.yml "
         f"-e PROVISIONER_HOST={container_name} "
+        f"-v /var/run/docker.sock:/var/run/docker.sock "
         f"{config_mount}{gpu_opts}{image_tag}"
     )
     _run(cmd, check=True)
