@@ -305,7 +305,7 @@ async def get_footprint_logs(
     variety: str | None = None,
     top: int | None = None,
     last: int | None = None,
-    authenticated: bool = Depends(verify_system_key),
+    # authenticated: bool = Depends(verify_system_key),
 ) -> FootprintLogLines:
     """Retrieve docker logs for the footprint run of a service."""
     provisioner = SystemProvisioner.singleton()
