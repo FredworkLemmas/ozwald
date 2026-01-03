@@ -246,6 +246,9 @@ def start_provisioner_backend(
     # Ensure the footprint file exists on the host to prevent Docker
     # from creating a directory when mounting.
     if not footprint_path.exists():
+        print(
+            f"footprint file does not exist, creating it at: {footprint_path}"
+        )
         footprint_path.touch()
 
     container_name = "ozwald-provisioner-backend"
