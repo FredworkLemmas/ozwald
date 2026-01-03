@@ -253,7 +253,10 @@ def start_provisioner_backend(
         print(
             f"footprint file does not exist, creating it at: {footprint_path}"
         )
-        footprint_path.touch()
+        # Ensure the parent directory exists, then create the empty file
+        footprint_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(footprint_path, "w") as f:
+            f.write("[]")  # Initialize as an empty YAML list
 
     container_name = "ozwald-provisioner-backend"
     image_tag = "ozwald-provisioner-backend:latest"
