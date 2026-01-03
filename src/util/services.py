@@ -245,6 +245,10 @@ def start_provisioner_backend(
 
     # Ensure the footprint file exists on the host to prevent Docker
     # from creating a directory when mounting.
+    print(
+        f"footprint path {footprint_path} exists() "
+        f"returns {footprint_path.exists()}"
+    )
     if not footprint_path.exists():
         print(
             f"footprint file does not exist, creating it at: {footprint_path}"
