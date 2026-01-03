@@ -355,7 +355,9 @@ async def get_footprint_logs(
             detail=f"Variety {variety} not found for service {service_name}",
         )
 
-    inst_name = f"footprinter--{service_name}--{profile}--{variety}"
+    # ozwald-<image-name>
+
+    inst_name = f"service-footprinter--{service_name}--{profile}--{variety}"
     container_name = f"service-{inst_name}"
 
     cmd = ["docker", "logs"]
