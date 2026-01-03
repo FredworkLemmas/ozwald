@@ -354,7 +354,7 @@ class SystemProvisioner:
         now: datetime,
     ) -> bool:
         updated = False
-        logger.info("service is starting")
+        logger.info(f"service {svc_info.name}[{svc_info.service}]is starting")
         # Check duplicate initiation within timeout
         start_initiated_iso = svc_info.info.get(
             "start_initiated",
