@@ -315,6 +315,7 @@ def start_provisioner_backend(
         f"-v {footprint_path}:/etc/ozwald-footprints.yml "
         f"{user_flag}{config_mount}{gpu_opts}{image_tag}"
     )
+    print(f"Starting provisioner backend container:\n{'-' * 60}\n{cmd}")
     _run(cmd, check=True)
     print(f"✓ Container {container_name} created and started")
 
