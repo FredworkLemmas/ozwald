@@ -19,6 +19,7 @@ RUN pacman -Syu --noconfirm && \
     rocm-hip-sdk \
     rocm-opencl-sdk \
     amdsmi \
+    docker \
     && pacman -Scc --noconfirm
 
 # Create a non-root user
