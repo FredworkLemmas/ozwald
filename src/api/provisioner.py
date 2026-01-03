@@ -363,6 +363,8 @@ async def get_footprint_logs(
         cmd.extend(["--tail", str(last)])
     cmd.append(container_name)
 
+    logger.info(f"fetching logs for {container_name}: {' '.join(cmd)}")
+
     try:
         result = subprocess.run(
             cmd,
