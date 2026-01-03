@@ -257,6 +257,7 @@ def start_provisioner_backend(
         footprint_path.parent.mkdir(parents=True, exist_ok=True)
         with open(footprint_path, "w") as f:
             f.write("[]")  # Initialize as an empty YAML list
+        print("...created footprint file")
 
     container_name = "ozwald-provisioner-backend"
     image_tag = "ozwald-provisioner-backend:latest"
