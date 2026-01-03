@@ -169,6 +169,7 @@ def start_provisioner_api(
         f"-e OZWALD_PROVISIONER={provisioner_name} "
         f"-e OZWALD_CONFIG=/etc/ozwald.yml "
         f"-e PROVISIONER_HOST={container_name} "
+        f"-v /var/run/docker.sock:/var/run/docker.sock "
         f"{config_mount}{gpu_opts}{image_tag}"
     )
     _run(cmd, check=True)
@@ -244,8 +245,19 @@ def start_provisioner_backend(
 
     # Ensure the footprint file exists on the host to prevent Docker
     # from creating a directory when mounting.
+    print(
+        f"footprint path {footprint_path} exists() "
+        f"returns {footprint_path.exists()}"
+    )
     if not footprint_path.exists():
-        footprint_path.touch()
+        print(
+            f"footprint file does not exist, creating it at: {footprint_path}"
+        )
+        # Ensure the parent directory exists, then create the empty file
+        footprint_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(footprint_path, "w") as f:
+            f.write("[]")  # Initialize as an empty YAML list
+        print("...created footprint file")
 
     container_name = "ozwald-provisioner-backend"
     image_tag = "ozwald-provisioner-backend:latest"
@@ -314,6 +326,7 @@ def start_provisioner_backend(
         f"-v {footprint_path}:/etc/ozwald-footprints.yml "
         f"{user_flag}{config_mount}{gpu_opts}{image_tag}"
     )
+    print(f"Starting provisioner backend container:\n{'-' * 60}\n{cmd}")
     _run(cmd, check=True)
     print(f"✓ Container {container_name} created and started")
 

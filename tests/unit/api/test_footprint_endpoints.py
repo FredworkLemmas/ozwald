@@ -81,3 +81,108 @@ class TestFootprintEndpoints:
         args = mock_cache.add_footprint_request.call_args[0][0]
         assert isinstance(args, FootprintAction)
         assert args.request_id == "2"
+
+
+class TestFootprintLogs:
+    def test_get_footprint_logs_success(self, client, auth_header, mocker):
+        mock_svc = mocker.Mock()
+        mock_svc.service_name = "test-service"
+        mock_svc.profiles = {"prod": {}}
+        mock_svc.varieties = {"gpu": {}}
+
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("api.provisioner.subprocess.run")
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "line1\nline2\n"
+        mock_run.return_value.stderr = ""
+
+        resp = client.get(
+            "/srv/services/footprint-logs/test-service/",
+            params={"profile": "prod", "variety": "gpu"},
+            headers=auth_header,
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["lines"] == ["line1", "line2"]
+        assert data["profile"] == "prod"
+        assert data["variety"] == "gpu"
+
+        # Check command
+        cmd = mock_run.call_args[0][0]
+        assert "service-footprinter--test-service--prod--gpu" in cmd
+
+    def test_get_footprint_logs_validation_error(
+        self,
+        client,
+        auth_header,
+        mocker,
+    ):
+        mock_svc = mocker.Mock()
+        mock_svc.service_name = "test-service"
+        mock_svc.profiles = {"prod": {}}
+        mock_svc.varieties = {}
+
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+
+        # Profile required but missing
+        resp = client.get(
+            "/srv/services/footprint-logs/test-service/",
+            headers=auth_header,
+        )
+        assert resp.status_code == 400
+        assert "Profile is required" in resp.json()["detail"]
+
+    def test_get_footprint_logs_top_last(self, client, auth_header, mocker):
+        mock_svc = mocker.Mock()
+        mock_svc.service_name = "test-service"
+        mock_svc.profiles = {}
+        mock_svc.varieties = {}
+
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+
+        mock_run = mocker.patch("api.provisioner.subprocess.run")
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "\n".join([
+            f"line{i}" for i in range(10)
+        ])
+        mock_run.return_value.stderr = ""
+
+        resp = client.get(
+            "/srv/services/footprint-logs/test-service/",
+            params={"top": 3},
+            headers=auth_header,
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["lines"] == ["line0", "line1", "line2"]
+        assert data["is_top_n"] is True
+
+        resp = client.get(
+            "/srv/services/footprint-logs/test-service/",
+            params={"last": 2},
+            headers=auth_header,
+        )
+        assert resp.status_code == 200
+        # When last is used, we pass --tail to docker logs
+        cmd = mock_run.call_args[0][0]
+        assert "--tail" in cmd
+        assert "2" in cmd
