@@ -838,7 +838,7 @@ class SystemProvisioner:
         target: ConfiguredServiceIdentifier,
     ) -> None:
         """Footprint a single configured service/profile."""
-        logger.debug("entered _footprint_single_service")
+        logger.info("entered _footprint_single_service")
 
         # Lookup service class first
         tmp_svc_info = ServiceInformation(
@@ -864,7 +864,7 @@ class SystemProvisioner:
         inst_name = self._target_service_instance_name(target)
 
         # Activate the service
-        logger.debug(f"starting service {inst_name}")
+        logger.info(f"starting service {inst_name}")
         svc_info = ServiceInformation(
             name=inst_name,
             service=target.service_name,
@@ -882,7 +882,7 @@ class SystemProvisioner:
 
         # Wait for start completed marker
         self._wait_for_start_completed(inst_name, timeout=60.0)
-        logger.debug(f"service {inst_name} started successfully")
+        logger.info(f"service {inst_name} started successfully")
 
         # Measure post state
         post = HostResources.inspect_host()
@@ -898,7 +898,7 @@ class SystemProvisioner:
         }
 
         # Persist to YAML
-        logger.debug(f"writing footprint usage for {target.service_name}")
+        logger.info(f"writing footprint usage for {target.service_name}")
         self._write_footprint_usage(
             SystemUsageDelta(
                 service_name=target.service_name,
@@ -910,7 +910,7 @@ class SystemProvisioner:
 
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
-        logger.debug(f"stopping service {inst_name}")
+        logger.info(f"stopping service {inst_name}")
         self.update_services([])
 
         # Manually trigger stop because the main loop is blocked by us
