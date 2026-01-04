@@ -29,6 +29,7 @@ from orchestration.provisioner import SystemProvisioner
 from util.active_services_cache import ActiveServicesCache
 from util.footprint_request_cache import FootprintRequestCache
 from util.logger import get_logger
+from util.runner_logs_cache import RunnerLogsCache
 
 logger = get_logger(__name__)
 
@@ -294,12 +295,12 @@ async def post_footprint_request(
 
 
 @app.get(
-    "/srv/services/footprint-logs/{service_name}/",
+    "/srv/services/footprint-logs/container/{service_name}/",
     response_model=FootprintLogLines,
-    summary="Get footprint logs",
+    summary="Get footprint container logs",
     description="Retrieve docker logs for the footprint run of the container",
 )
-async def get_footprint_logs(
+async def get_footprint_container_logs(
     service_name: str,
     profile: str | None = None,
     variety: str | None = None,
@@ -357,7 +358,7 @@ async def get_footprint_logs(
 
     # ozwald-<image-name>
 
-    inst_name = f"service-footprinter--{service_name}--{profile}--{variety}"
+    inst_name = f"footprinter--{service_name}--{profile}--{variety}"
     container_name = f"service-{inst_name}"
 
     cmd = ["docker", "logs"]
@@ -407,6 +408,66 @@ async def get_footprint_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve logs: {str(e)}",
         ) from e
+
+
+@app.get(
+    "/srv/services/footprint-logs/runner/{service_name}/",
+    response_model=FootprintLogLines,
+    summary="Get footprint runner logs",
+    description="Retrieve cached runner logs for the footprint run",
+)
+async def get_footprint_runner_logs(
+    service_name: str,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+) -> FootprintLogLines:
+    """Retrieve cached runner logs for the footprint run of a service."""
+    provisioner = SystemProvisioner.singleton()
+    services = provisioner.get_configured_services()
+    service_def = next(
+        (s for s in services if s.service_name == service_name), None
+    )
+    if not service_def:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Service {service_name} not found",
+        )
+
+    # Validation
+    if bool(service_def.profiles) and profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Profile is required for service {service_name}",
+        )
+    if bool(service_def.varieties) and variety is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Variety is required for service {service_name}",
+        )
+
+    inst_name = f"footprinter--{service_name}--{profile}--{variety}"
+    container_name = f"service-{inst_name}"
+
+    cache = provisioner.get_cache()
+    runner_logs_cache = RunnerLogsCache(cache)
+    lines = runner_logs_cache.get_log_lines(container_name)
+
+    if top is not None:
+        lines = lines[:top]
+    if last is not None:
+        lines = lines[-last:]
+
+    return FootprintLogLines(
+        service_name=service_name,
+        profile=profile,
+        variety=variety,
+        request_datetime=datetime.now(),
+        is_top_n=top is not None,
+        is_bottom_n=last is not None,
+        lines=lines,
+    )
 
 
 # Allow running this module directly, e.g. `python -m api.provisioner`

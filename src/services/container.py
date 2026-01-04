@@ -11,6 +11,7 @@ from orchestration.models import ServiceInformation, ServiceStatus
 from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.logger import get_logger
+from util.runner_logs_cache import RunnerLogsCache
 
 logger = get_logger(__name__)
 
@@ -165,6 +166,9 @@ class ContainerService(BaseProvisionableService):
                     check=True,
                 )
                 container_id = result.stdout.strip()
+
+                # Start streaming logs to Redis for historical access
+                self._stream_logs_to_redis(container_id)
 
                 # Wait for container to be running
                 max_wait_time = 30  # seconds
@@ -324,6 +328,34 @@ class ContainerService(BaseProvisionableService):
 
         container_thread = threading.Thread(target=stop_container, daemon=True)
         container_thread.start()
+
+    def _stream_logs_to_redis(self, container_id: str):
+        """Stream container logs to Redis in a background thread."""
+        container_name = self.get_container_name()
+        runner_logs_cache = RunnerLogsCache(self._cache)
+
+        def stream_thread():
+            try:
+                process = subprocess.Popen(
+                    ["docker", "logs", "-f", container_id],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                if process.stdout:
+                    for line in iter(process.stdout.readline, ""):
+                        runner_logs_cache.add_log_line(
+                            container_name,
+                            line.rstrip(),
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Error streaming logs for container {container_id}: {e}"
+                )
+
+        thread = threading.Thread(target=stream_thread, daemon=True)
+        thread.start()
 
     # --- Effective configuration helpers ---
     def _resolve_effective_fields(
@@ -521,7 +553,7 @@ class ContainerService(BaseProvisionableService):
         return f"service-{self._service_info.name}"
 
     def get_container_options__standard(self) -> list[str]:
-        return ["-d", "--rm", "--name", self.get_container_name()]
+        return ["-d", "--name", self.get_container_name()]
 
     def get_container_options__gpu(self) -> list[str]:
         gpu_opts = []

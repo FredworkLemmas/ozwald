@@ -104,7 +104,7 @@ class TestFootprintLogs:
         mock_run.return_value.stderr = ""
 
         resp = client.get(
-            "/srv/services/footprint-logs/test-service/",
+            "/srv/services/footprint-logs/container/test-service/",
             params={"profile": "prod", "variety": "gpu"},
             headers=auth_header,
         )
@@ -139,7 +139,7 @@ class TestFootprintLogs:
 
         # Profile required but missing
         resp = client.get(
-            "/srv/services/footprint-logs/test-service/",
+            "/srv/services/footprint-logs/container/test-service/",
             headers=auth_header,
         )
         assert resp.status_code == 400
@@ -166,7 +166,7 @@ class TestFootprintLogs:
         mock_run.return_value.stderr = ""
 
         resp = client.get(
-            "/srv/services/footprint-logs/test-service/",
+            "/srv/services/footprint-logs/container/test-service/",
             params={"top": 3},
             headers=auth_header,
         )
@@ -177,7 +177,7 @@ class TestFootprintLogs:
         assert data["is_top_n"] is True
 
         resp = client.get(
-            "/srv/services/footprint-logs/test-service/",
+            "/srv/services/footprint-logs/container/test-service/",
             params={"last": 2},
             headers=auth_header,
         )
@@ -186,3 +186,36 @@ class TestFootprintLogs:
         cmd = mock_run.call_args[0][0]
         assert "--tail" in cmd
         assert "2" in cmd
+
+    def test_get_footprint_runner_logs_success(
+        self, client, auth_header, mocker
+    ):
+        mock_svc = mocker.Mock()
+        mock_svc.service_name = "test-service"
+        mock_svc.profiles = {}
+        mock_svc.varieties = {}
+
+        mock_provisioner = mocker.Mock()
+        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mock_provisioner.get_cache.return_value = {}
+        mocker.patch(
+            "api.provisioner.SystemProvisioner.singleton",
+            return_value=mock_provisioner,
+        )
+
+        mock_logs_cache = mocker.Mock()
+        mock_logs_cache.get_log_lines.return_value = ["runner1", "runner2"]
+        mocker.patch(
+            "api.provisioner.RunnerLogsCache",
+            return_value=mock_logs_cache,
+        )
+
+        resp = client.get(
+            "/srv/services/footprint-logs/runner/test-service/",
+            headers=auth_header,
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["lines"] == ["runner1", "runner2"]
+        assert data["service_name"] == "test-service"
