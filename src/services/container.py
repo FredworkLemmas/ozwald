@@ -195,7 +195,7 @@ class ContainerService(BaseProvisionableService):
                         and check_result.stdout.strip() == "true"
                     ):
                         # Start streaming logs to Redis for historical access
-                        self._stream_logs_to_redis(container_id)
+                        # self._stream_logs_to_redis(container_id)
 
                         logger.info(
                             f"Container for service {self._service_info.name}"
@@ -291,7 +291,7 @@ class ContainerService(BaseProvisionableService):
                 else:
                     container_identifier = self.get_container_name()
 
-                # self._stream_logs_to_redis(container_identifier)
+                self._stream_logs_to_redis(container_identifier)
 
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
