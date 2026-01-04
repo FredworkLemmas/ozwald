@@ -291,6 +291,8 @@ class ContainerService(BaseProvisionableService):
                 else:
                     container_identifier = self.get_container_name()
 
+                self._stream_logs_to_redis(container_identifier)
+
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
                     stop_cmd,
