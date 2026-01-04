@@ -238,11 +238,14 @@ class ContainerService(BaseProvisionableService):
                     " start within the expected time",
                 )
             except subprocess.CalledProcessError as e:
+                # self._stream_logs_to_redis(container_id)
+
                 logger.error(
                     f"Failed to start container for service"
                     f" {self._service_info.name}: {e}",
                 )
             except Exception as e:
+                # self._stream_logs_to_redis(container_id)
                 logger.error(
                     "Unexpected error starting service "
                     f"{self._service_info.name}: {e}",
