@@ -168,7 +168,7 @@ class ContainerService(BaseProvisionableService):
                 container_id = result.stdout.strip()
 
                 # Start streaming logs to Redis for historical access
-                self._stream_logs_to_redis(container_id)
+                # self._stream_logs_to_redis(container_id)
 
                 # Wait for container to be running
                 max_wait_time = 30  # seconds
@@ -194,6 +194,9 @@ class ContainerService(BaseProvisionableService):
                         check_result.returncode == 0
                         and check_result.stdout.strip() == "true"
                     ):
+                        # Start streaming logs to Redis for historical access
+                        self._stream_logs_to_redis(container_id)
+
                         logger.info(
                             f"Container for service {self._service_info.name}"
                             " is now running",
@@ -226,6 +229,9 @@ class ContainerService(BaseProvisionableService):
 
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
+
+                # Start streaming logs to Redis for historical access
+                self._stream_logs_to_redis(container_id)
 
                 logger.error(
                     f"Container for service {self._service_info.name} did not"
