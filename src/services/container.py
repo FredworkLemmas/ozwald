@@ -170,17 +170,21 @@ class ContainerService(BaseProvisionableService):
                 # Start streaming logs to Redis for historical access
                 # self._stream_logs_to_redis(container_id)
 
-                # Wait for container to be running
-                max_wait_time = 30  # seconds
+                # Wait for container to be running and healthy (if it has a
+                # healthcheck)
+                max_wait_time = 300  # seconds
                 wait_interval = 1  # seconds
                 elapsed_time = 0
 
                 while elapsed_time < max_wait_time:
-                    # Check if container is running
+                    # Check if container is running and its health status
                     check_cmd = [
                         "docker",
                         "inspect",
-                        "--format={{.State.Running}}",
+                        (
+                            "--format={{.State.Running}} {{if .State.Health}}"
+                            "{{.State.Health.Status}}{{else}}none{{end}}"
+                        ),
                         container_id,
                     ]
                     check_result = subprocess.run(
@@ -190,42 +194,52 @@ class ContainerService(BaseProvisionableService):
                         text=True,
                     )
 
-                    if (
-                        check_result.returncode == 0
-                        and check_result.stdout.strip() == "true"
-                    ):
-                        # Start streaming logs to Redis for historical access
-                        # self._stream_logs_to_redis(container_id)
+                    if check_result.returncode == 0:
+                        output = check_result.stdout.strip()
+                        parts = output.split()
+                        running = ""
+                        health = "none"
 
-                        logger.info(
-                            f"Container for service {self._service_info.name}"
-                            " is now running",
-                        )
+                        if len(parts) == 2:
+                            running, health = parts
+                        elif len(parts) == 1:
+                            running = parts[0]
 
-                        # Update service status in cache
-                        updated_services = []
-                        for service in active_services:
-                            if (
-                                service.name == self._service_info.name
-                                and service.service
-                                == self._service_info.service
-                                and service.profile
-                                == self._service_info.profile
-                            ):
-                                service.status = ServiceStatus.AVAILABLE
-                                if service.info is None:
-                                    service.info = {}
-                                service.info["container_id"] = container_id
-                                service.info["start_completed"] = (
-                                    datetime.now().isoformat()
-                                )
-                            updated_services.append(service)
+                        if running == "true" and health in ("healthy", "none"):
+                            # Start streaming logs to Redis for
+                            # historical access
+                            # self._stream_logs_to_redis(container_id)
 
-                        self._set_services_with_retry(
-                            active_services_cache,
-                            updated_services,
-                        )
-                        return
+                            logger.info(
+                                f"Container for service "
+                                f"{self._service_info.name} is now "
+                                f"running and {health}",
+                            )
+
+                            # Update service status in cache
+                            updated_services = []
+                            for service in active_services:
+                                if (
+                                    service.name == self._service_info.name
+                                    and service.service
+                                    == self._service_info.service
+                                    and service.profile
+                                    == self._service_info.profile
+                                ):
+                                    service.status = ServiceStatus.AVAILABLE
+                                    if service.info is None:
+                                        service.info = {}
+                                    service.info["container_id"] = container_id
+                                    service.info["start_completed"] = (
+                                        datetime.now().isoformat()
+                                    )
+                                updated_services.append(service)
+
+                            self._set_services_with_retry(
+                                active_services_cache,
+                                updated_services,
+                            )
+                            return
 
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
