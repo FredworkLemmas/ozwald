@@ -187,8 +187,9 @@ class ContainerService(BaseProvisionableService):
                         "docker",
                         "inspect",
                         (
-                            "--format={{.State.Running}} {{if .State.Health}}"
-                            "{{.State.Health.Status}}{{else}}none{{end}}"
+                            "--format={{.State.Status}} {{.State.Running}} "
+                            "{{if .State.Health}}{{.State.Health.Status}}"
+                            "{{else}}none{{end}}"
                         ),
                         container_id,
                     ]
@@ -202,25 +203,24 @@ class ContainerService(BaseProvisionableService):
                     if check_result.returncode == 0:
                         output = check_result.stdout.strip()
                         parts = output.split()
+                        status = ""
                         running = ""
                         health = "none"
 
-                        if len(parts) == 2:
+                        if len(parts) == 3:
+                            status, running, health = parts
+                        elif len(parts) == 2:
                             running, health = parts
                         elif len(parts) == 1:
                             running = parts[0]
 
-                        # if running == "true"
-                        #         and health in ("healthy", "none"):
-                        if running == "true" and health in ("healthy", "none"):
-                            # Start streaming logs to Redis for
-                            # historical access
-                            # self._stream_logs_to_redis(container_id)
-
+                        # Container is considered available if it's running
+                        # and not in the 'starting' health state.
+                        if running == "true" and health != "starting":
                             logger.info(
                                 f"Container for service "
                                 f"{self._service_info.name} is now "
-                                f"running and {health}",
+                                f"{status} and {health}",
                             )
 
                             # Update service status in cache
@@ -237,6 +237,11 @@ class ContainerService(BaseProvisionableService):
                                     if service.info is None:
                                         service.info = {}
                                     service.info["container_id"] = container_id
+                                    service.info["container_status"] = status
+                                    if health != "none":
+                                        service.info["container_health"] = (
+                                            health
+                                        )
                                     service.info["start_completed"] = (
                                         datetime.now().isoformat()
                                     )
