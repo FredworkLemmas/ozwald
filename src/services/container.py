@@ -207,7 +207,9 @@ class ContainerService(BaseProvisionableService):
                         elif len(parts) == 1:
                             running = parts[0]
 
-                        if running == "true" and health in ("healthy", "none"):
+                        # if running == "true"
+                        #         and health in ("healthy", "none"):
+                        if running == "true" and health in ("healthy",):
                             # Start streaming logs to Redis for
                             # historical access
                             # self._stream_logs_to_redis(container_id)
