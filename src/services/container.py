@@ -13,6 +13,8 @@ from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.logger import get_logger
 from util.runner_logs_cache import RunnerLogsCache
 
+CONTAINER_HEALTHCHECK_TIMEOUT = 300
+
 logger = get_logger(__name__)
 
 
@@ -168,11 +170,11 @@ class ContainerService(BaseProvisionableService):
                 container_id = result.stdout.strip()
 
                 # Start streaming logs to Redis for historical access
-                # self._stream_logs_to_redis(container_id)
+                self._stream_logs_to_redis(container_id)
 
                 # Wait for container to be running and healthy (if it has a
                 # healthcheck)
-                max_wait_time = 300  # seconds
+                max_wait_time = CONTAINER_HEALTHCHECK_TIMEOUT  # seconds
                 wait_interval = 1  # seconds
                 elapsed_time = 0
 
@@ -241,11 +243,21 @@ class ContainerService(BaseProvisionableService):
                             )
                             return
 
+                        if running != "true":
+                            logger.error(
+                                f"Container for service "
+                                f"{self._service_info.name} stopped "
+                                "unexpectedly",
+                            )
+                            # We already started log streaming at line 171,
+                            # so logs should be available in Redis.
+                            return
+
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
 
                 # Start streaming logs to Redis for historical access
-                self._stream_logs_to_redis(container_id)
+                # self._stream_logs_to_redis(container_id)
 
                 logger.error(
                     f"Container for service {self._service_info.name} did not"
@@ -309,6 +321,9 @@ class ContainerService(BaseProvisionableService):
                     container_identifier = self.get_container_name()
 
                 self._stream_logs_to_redis(container_identifier)
+                # Give the streaming thread a moment to establish connection
+                # before we remove the container
+                time.sleep(2)
 
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(

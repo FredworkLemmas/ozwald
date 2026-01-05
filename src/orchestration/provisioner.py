@@ -31,8 +31,8 @@ from .models import (
 )
 
 BACKEND_DAEMON_SLEEP_TIME = 2.0
-SERVICE_START_TIMEOUT = 20.0
-SERVICE_STOP_TIMEOUT = 20.0
+SERVICE_START_TIMEOUT = 3600.0
+SERVICE_STOP_TIMEOUT = 3600.0
 
 logger = get_logger()
 load_dotenv()
