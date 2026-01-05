@@ -90,20 +90,23 @@ class ContainerService(BaseProvisionableService):
 
         # Record start initiation time and persist to cache before
         # starting container
-        updated_services = []
-        for service in active_services:
-            if (
-                service.name == self._service_info.name
-                and service.service == self._service_info.service
-                and service.profile == self._service_info.profile
-            ):
-                if service.info is None:
-                    service.info = {}
-                service.info["start_initiated"] = datetime.now().isoformat()
-            updated_services.append(service)
+        # Note: SystemProvisioner also sets start_initiated, but we do it
+        # here as well to ensure it is set even if started manually.
+        # However, we should be careful about race conditions.
+        # updated_services = []
+        # for service in active_services:
+        #     if (
+        #         service.name == self._service_info.name
+        #         and service.service == self._service_info.service
+        #         and service.profile == self._service_info.profile
+        #     ):
+        #         if service.info is None:
+        #             service.info = {}
+        #         service.info["start_initiated"] = datetime.now().isoformat()
+        #     updated_services.append(service)
 
         # Save updated services to cache with retry to tolerate locking
-        self._set_services_with_retry(active_services_cache, updated_services)
+        # self._set_services_with_retry(active_services_cache, updated_services)
 
         # Start the container in a separate thread
         def start_container():
@@ -209,7 +212,7 @@ class ContainerService(BaseProvisionableService):
 
                         # if running == "true"
                         #         and health in ("healthy", "none"):
-                        if running == "true" and health in ("healthy",):
+                        if running == "true" and health in ("healthy", "none"):
                             # Start streaming logs to Redis for
                             # historical access
                             # self._stream_logs_to_redis(container_id)
@@ -251,8 +254,9 @@ class ContainerService(BaseProvisionableService):
                                 f"{self._service_info.name} stopped "
                                 "unexpectedly",
                             )
-                            # We already started log streaming at line 171,
-                            # so logs should be available in Redis.
+                            # Give a small delay for logs to flush in Docker
+                            time.sleep(1)
+                            self._capture_final_logs(container_id)
                             return
 
                     time.sleep(wait_interval)
@@ -377,16 +381,33 @@ class ContainerService(BaseProvisionableService):
         runner_logs_cache = RunnerLogsCache(self._cache)
 
         def stream_thread():
+            # Use a Redis lock-like key to ensure only one streaming thread
+            # per container ID
+            lock_key = f"streaming_logs:{container_id}"
+            redis_client = runner_logs_cache._redis_client
+
+            # Try to acquire a "lock" for this container's logs to avoid
+            # duplicates if multiple threads/processes call this for the
+            # same container ID.
+            if not redis_client.set(lock_key, "1", nx=True, ex=3600):
+                logger.debug(
+                    f"Streaming thread for container {container_id} already "
+                    "initiated"
+                )
+                return
+
             try:
+                # Use binary mode and larger buffer for robustness
                 process = subprocess.Popen(
                     ["docker", "logs", "-f", container_id],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
+                    bufsize=64 * 1024,
                 )
                 if process.stdout:
-                    for line in iter(process.stdout.readline, ""):
+                    # Read lines from binary stream and decode safely
+                    for line_bytes in iter(process.stdout.readline, b""):
+                        line = line_bytes.decode("utf-8", errors="replace")
                         runner_logs_cache.add_log_line(
                             container_name,
                             line.rstrip(),
@@ -398,6 +419,32 @@ class ContainerService(BaseProvisionableService):
 
         thread = threading.Thread(target=stream_thread, daemon=True)
         thread.start()
+
+    def _capture_final_logs(self, container_id: str):
+        """Perform a final log capture for a container."""
+        container_name = self.get_container_name()
+        runner_logs_cache = RunnerLogsCache(self._cache)
+        try:
+            logger.info(f"Capturing final logs for container {container_id}")
+            # docker logs without -f to get the full history
+            result = subprocess.run(
+                ["docker", "logs", container_id],
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+            if result.stdout:
+                # This might introduce some duplicates if the streaming
+                # thread was partially successful, but ensures we get
+                # everything if it failed.
+                lines = result.stdout.splitlines()
+                # To minimize duplicates, we could compare with what's
+                # already in Redis, but for now we just append.
+                # Actually, the user wants the FULL logs.
+                runner_logs_cache.add_log_lines(container_name, lines)
+        except Exception as e:
+            logger.error(f"Failed to capture final logs: {e}")
 
     # --- Effective configuration helpers ---
     def _resolve_effective_fields(

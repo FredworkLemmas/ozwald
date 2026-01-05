@@ -354,6 +354,26 @@ class SystemProvisioner:
         now: datetime,
     ) -> bool:
         updated = False
+
+        # Re-verify status and initiation from the most current cache state
+        # to avoid race conditions with background threads or other
+        # provisioner instances.
+        current_active = self._active_services_cache.get_services()
+        latest_info = next(
+            (s for s in current_active if s.name == svc_info.name), None
+        )
+        if latest_info:
+            if latest_info.status == ServiceStatus.AVAILABLE:
+                logger.info(
+                    f"Service {svc_info.name} is already AVAILABLE, "
+                    "skipping start"
+                )
+                return False
+            # Update our local info with latest from cache to get the
+            # freshest info
+            if latest_info.info:
+                svc_info.info.update(latest_info.info)
+
         logger.info(f"service {svc_info.name}[{svc_info.service}] is starting")
         # Check duplicate initiation within timeout
         start_initiated_iso = svc_info.info.get(
@@ -421,6 +441,21 @@ class SystemProvisioner:
         now: datetime,
     ) -> bool:
         updated = False
+
+        # Re-verify status and initiation from the most current cache state
+        current_active = self._active_services_cache.get_services()
+        latest_info = next(
+            (s for s in current_active if s.name == svc_info.name), None
+        )
+        if latest_info:
+            if latest_info.status is None:  # Service already removed
+                logger.info(
+                    f"Service {svc_info.name} is already removed, skipping stop"
+                )
+                return False
+            if latest_info.info:
+                svc_info.info.update(latest_info.info)
+
         stop_initiated_iso = svc_info.info.get(
             "stop_initiated",
         )

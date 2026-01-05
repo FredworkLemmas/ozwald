@@ -37,9 +37,21 @@ class RunnerLogsCache:
         key = self._get_key(container_name)
         try:
             self._redis_client.rpush(key, line)
+            # Only set expiry if it's the first line or periodically to
+            # avoid overhead
             self._redis_client.expire(key, self.TTL)
         except Exception as e:
             logger.error(f"Failed to add log line to Redis: {e}")
+
+    def add_log_lines(self, container_name: str, lines: list[str]) -> None:
+        if not lines:
+            return
+        key = self._get_key(container_name)
+        try:
+            self._redis_client.rpush(key, *lines)
+            self._redis_client.expire(key, self.TTL)
+        except Exception as e:
+            logger.error(f"Failed to add log lines to Redis: {e}")
 
     def get_log_lines(self, container_name: str) -> list[str]:
         key = self._get_key(container_name)
