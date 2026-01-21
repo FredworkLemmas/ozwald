@@ -181,6 +181,12 @@ class ContainerService(BaseProvisionableService):
                 wait_interval = 1  # seconds
                 elapsed_time = 0
 
+                logger.info(
+                    f"elapsed time: {elapsed_time}, "
+                    f"max wait time: {max_wait_time}, "
+                    f"wait interval: {wait_interval}"
+                )
+
                 while elapsed_time < max_wait_time:
                     # Check if container is running and its health status
                     check_cmd = [
@@ -268,8 +274,14 @@ class ContainerService(BaseProvisionableService):
                             self._capture_final_logs(container_id)
                             return
 
+                    logger.info("Container not yet ready, waiting...")
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
+                    logger.info(
+                        f"elapsed time: {elapsed_time}, "
+                        f"max wait time: {max_wait_time}, "
+                        f"wait interval: {wait_interval}"
+                    )
 
                 # Start streaming logs to Redis for historical access
                 # self._stream_logs_to_redis(container_id)
