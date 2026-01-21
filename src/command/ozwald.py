@@ -522,6 +522,7 @@ def action_get_footprint_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    log_type: str = "container",
 ) -> int:
     if not service_name:
         print("Error: service name is required for get_footprint_logs")
@@ -534,6 +535,7 @@ def action_get_footprint_logs(
             variety=variety,
             top=top,
             last=last,
+            log_type=log_type,
         )
 
         lines = data.get("lines", [])
@@ -624,6 +626,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="For get_footprint_logs: variety for footprint logs",
     )
     parser.add_argument(
+        "--log-type",
+        choices=["container", "runner"],
+        default="container",
+        help="For get_footprint_logs: type of logs (default: container)",
+    )
+    parser.add_argument(
         "--top",
         type=int,
         help="For get_footprint_logs: only include the top N lines of logs",
@@ -705,6 +713,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.log_type,
         )
     if args.action == "status":
         return action_status()

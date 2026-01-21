@@ -105,6 +105,9 @@ class ActiveServicesCache:
 
         # Decode JSON and convert to ServiceInformation objects
         services_data = json.loads(json_data)
+
+        logger.info(f"Retrieved active services: {services_data}")
+
         service_info_list = []
         for service_dict in services_data:
             service_dict["info"] = service_dict["info"] or {}

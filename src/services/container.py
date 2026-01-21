@@ -11,6 +11,9 @@ from orchestration.models import ServiceInformation, ServiceStatus
 from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.logger import get_logger
+from util.runner_logs_cache import RunnerLogsCache
+
+CONTAINER_HEALTHCHECK_TIMEOUT = 300
 
 logger = get_logger(__name__)
 
@@ -87,20 +90,23 @@ class ContainerService(BaseProvisionableService):
 
         # Record start initiation time and persist to cache before
         # starting container
-        updated_services = []
-        for service in active_services:
-            if (
-                service.name == self._service_info.name
-                and service.service == self._service_info.service
-                and service.profile == self._service_info.profile
-            ):
-                if service.info is None:
-                    service.info = {}
-                service.info["start_initiated"] = datetime.now().isoformat()
-            updated_services.append(service)
+        # Note: SystemProvisioner also sets start_initiated, but we do it
+        # here as well to ensure it is set even if started manually.
+        # However, we should be careful about race conditions.
+        # updated_services = []
+        # for service in active_services:
+        #     if (
+        #         service.name == self._service_info.name
+        #         and service.service == self._service_info.service
+        #         and service.profile == self._service_info.profile
+        #     ):
+        #         if service.info is None:
+        #             service.info = {}
+        #         service.info["start_initiated"] = datetime.now().isoformat()
+        #     updated_services.append(service)
 
         # Save updated services to cache with retry to tolerate locking
-        self._set_services_with_retry(active_services_cache, updated_services)
+        # self._set_services_with_retry(active_services_cache, updated_services)
 
         # Start the container in a separate thread
         def start_container():
@@ -166,17 +172,31 @@ class ContainerService(BaseProvisionableService):
                 )
                 container_id = result.stdout.strip()
 
-                # Wait for container to be running
-                max_wait_time = 30  # seconds
+                # Start streaming logs to Redis for historical access
+                self._stream_logs_to_redis(container_id)
+
+                # Wait for container to be running and healthy (if it has a
+                # healthcheck)
+                max_wait_time = CONTAINER_HEALTHCHECK_TIMEOUT  # seconds
                 wait_interval = 1  # seconds
                 elapsed_time = 0
 
+                logger.info(
+                    f"elapsed time: {elapsed_time}, "
+                    f"max wait time: {max_wait_time}, "
+                    f"wait interval: {wait_interval}"
+                )
+
                 while elapsed_time < max_wait_time:
-                    # Check if container is running
+                    # Check if container is running and its health status
                     check_cmd = [
                         "docker",
                         "inspect",
-                        "--format={{.State.Running}}",
+                        (
+                            "--format={{.State.Status}} {{.State.Running}} "
+                            "{{if .State.Health}}{{.State.Health.Status}}"
+                            "{{else}}none{{end}}"
+                        ),
                         container_id,
                     ]
                     check_result = subprocess.run(
@@ -186,53 +206,99 @@ class ContainerService(BaseProvisionableService):
                         text=True,
                     )
 
-                    if (
-                        check_result.returncode == 0
-                        and check_result.stdout.strip() == "true"
-                    ):
+                    if check_result.returncode == 0:
+                        output = check_result.stdout.strip()
+                        parts = output.split()
+                        status = ""
+                        running = ""
+                        health = "none"
+
+                        if len(parts) == 3:
+                            status, running, health = parts
+                        elif len(parts) == 2:
+                            running, health = parts
+                        elif len(parts) == 1:
+                            running = parts[0]
+
                         logger.info(
-                            f"Container for service {self._service_info.name}"
-                            " is now running",
+                            f"Container status: {status}, {running}, {health}"
                         )
 
-                        # Update service status in cache
-                        updated_services = []
-                        for service in active_services:
-                            if (
-                                service.name == self._service_info.name
-                                and service.service
-                                == self._service_info.service
-                                and service.profile
-                                == self._service_info.profile
-                            ):
-                                service.status = ServiceStatus.AVAILABLE
-                                if service.info is None:
-                                    service.info = {}
-                                service.info["container_id"] = container_id
-                                service.info["start_completed"] = (
-                                    datetime.now().isoformat()
-                                )
-                            updated_services.append(service)
+                        # Container is considered available if it's running
+                        # and not in the 'starting' health state.
+                        if running == "true" and health != "starting":
+                            logger.info(
+                                f"Container for service "
+                                f"{self._service_info.name} is now "
+                                f"{status} and {health}",
+                            )
 
-                        self._set_services_with_retry(
-                            active_services_cache,
-                            updated_services,
-                        )
-                        return
+                            # Update service status in cache
+                            updated_services = []
+                            for service in active_services:
+                                if (
+                                    service.name == self._service_info.name
+                                    and service.service
+                                    == self._service_info.service
+                                    and service.profile
+                                    == self._service_info.profile
+                                ):
+                                    service.status = ServiceStatus.AVAILABLE
+                                    if service.info is None:
+                                        service.info = {}
+                                    service.info["container_id"] = container_id
+                                    service.info["container_status"] = status
+                                    if health != "none":
+                                        service.info["container_health"] = (
+                                            health
+                                        )
+                                    service.info["start_completed"] = (
+                                        datetime.now().isoformat()
+                                    )
+                                updated_services.append(service)
 
+                            self._set_services_with_retry(
+                                active_services_cache,
+                                updated_services,
+                            )
+                            return
+
+                        if running != "true":
+                            logger.error(
+                                f"Container for service "
+                                f"{self._service_info.name} stopped "
+                                "unexpectedly",
+                            )
+                            # Give a small delay for logs to flush in Docker
+                            time.sleep(1)
+                            self._capture_final_logs(container_id)
+                            return
+
+                    logger.info("Container not yet ready, waiting...")
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
+                    logger.info(
+                        f"elapsed time: {elapsed_time}, "
+                        f"max wait time: {max_wait_time}, "
+                        f"wait interval: {wait_interval}"
+                    )
+
+                # Start streaming logs to Redis for historical access
+                # self._stream_logs_to_redis(container_id)
 
                 logger.error(
                     f"Container for service {self._service_info.name} did not"
                     " start within the expected time",
                 )
             except subprocess.CalledProcessError as e:
+                # self._stream_logs_to_redis(container_id)
+
                 logger.error(
                     f"Failed to start container for service"
                     f" {self._service_info.name}: {e}",
                 )
             except Exception as e:
+                # self._stream_logs_to_redis(container_id)
                 logger.error(
                     "Unexpected error starting service "
                     f"{self._service_info.name}: {e}",
@@ -281,6 +347,11 @@ class ContainerService(BaseProvisionableService):
                 else:
                     container_identifier = self.get_container_name()
 
+                self._stream_logs_to_redis(container_identifier)
+                # Give the streaming thread a moment to establish connection
+                # before we remove the container
+                time.sleep(2)
+
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
                     stop_cmd,
@@ -324,6 +395,77 @@ class ContainerService(BaseProvisionableService):
 
         container_thread = threading.Thread(target=stop_container, daemon=True)
         container_thread.start()
+
+    def _stream_logs_to_redis(self, container_id: str):
+        """Stream container logs to Redis in a background thread."""
+        container_name = self.get_container_name()
+        runner_logs_cache = RunnerLogsCache(self._cache)
+
+        def stream_thread():
+            # Use a Redis lock-like key to ensure only one streaming thread
+            # per container ID
+            lock_key = f"streaming_logs:{container_id}"
+            redis_client = runner_logs_cache._redis_client
+
+            # Try to acquire a "lock" for this container's logs to avoid
+            # duplicates if multiple threads/processes call this for the
+            # same container ID.
+            if not redis_client.set(lock_key, "1", nx=True, ex=3600):
+                logger.debug(
+                    f"Streaming thread for container {container_id} already "
+                    "initiated"
+                )
+                return
+
+            try:
+                # Use binary mode and larger buffer for robustness
+                process = subprocess.Popen(
+                    ["docker", "logs", "-f", container_id],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=64 * 1024,
+                )
+                if process.stdout:
+                    # Read lines from binary stream and decode safely
+                    for line_bytes in iter(process.stdout.readline, b""):
+                        line = line_bytes.decode("utf-8", errors="replace")
+                        runner_logs_cache.add_log_line(
+                            container_name,
+                            line.rstrip(),
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Error streaming logs for container {container_id}: {e}"
+                )
+
+        thread = threading.Thread(target=stream_thread, daemon=True)
+        thread.start()
+
+    def _capture_final_logs(self, container_id: str):
+        """Perform a final log capture for a container."""
+        container_name = self.get_container_name()
+        runner_logs_cache = RunnerLogsCache(self._cache)
+        try:
+            logger.info(f"Capturing final logs for container {container_id}")
+            # docker logs without -f to get the full history
+            result = subprocess.run(
+                ["docker", "logs", container_id],
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+            if result.stdout:
+                # This might introduce some duplicates if the streaming
+                # thread was partially successful, but ensures we get
+                # everything if it failed.
+                lines = result.stdout.splitlines()
+                # To minimize duplicates, we could compare with what's
+                # already in Redis, but for now we just append.
+                # Actually, the user wants the FULL logs.
+                runner_logs_cache.add_log_lines(container_name, lines)
+        except Exception as e:
+            logger.error(f"Failed to capture final logs: {e}")
 
     # --- Effective configuration helpers ---
     def _resolve_effective_fields(
@@ -521,7 +663,7 @@ class ContainerService(BaseProvisionableService):
         return f"service-{self._service_info.name}"
 
     def get_container_options__standard(self) -> list[str]:
-        return ["-d", "--rm", "--name", self.get_container_name()]
+        return ["-d", "--name", self.get_container_name()]
 
     def get_container_options__gpu(self) -> list[str]:
         gpu_opts = []

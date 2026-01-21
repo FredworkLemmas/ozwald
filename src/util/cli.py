@@ -130,10 +130,14 @@ def get_footprint_logs(
     variety: str | None = None,
     top: int | None = None,
     last: int | None = None,
+    log_type: str = "container",
     system_key: str | None = None,
 ) -> dict[str, Any]:
     """Call the provisioner footprint logs endpoint."""
-    url = f"http://localhost:{port}/srv/services/footprint-logs/{service_name}/"
+    url = (
+        f"http://localhost:{port}/srv/services/footprint-logs/"
+        f"{log_type}/{service_name}/"
+    )
     params = {}
     if profile:
         params["profile"] = profile

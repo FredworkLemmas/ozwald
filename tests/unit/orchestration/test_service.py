@@ -210,10 +210,7 @@ class TestBaseProvisionableServiceLifecycle:
         assert s.status == ServiceStatus.AVAILABLE
         assert s.info is not None
         assert s.info.get("container_id") == "abc123"
-        # Also the first write before starting should have recorded
-        # start_initiated
-        assert cache.set_calls, "cache.set_services should have been called"
-        assert "start_initiated" in cache.set_calls[0][0].info
+        assert s.info.get("start_completed") is not None
 
     def test_stop_raises_when_service_not_in_cache(self, monkeypatch):
         svc = TestService(_si("svc1", ServiceStatus.STOPPING))
