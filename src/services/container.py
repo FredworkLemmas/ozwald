@@ -214,6 +214,10 @@ class ContainerService(BaseProvisionableService):
                         elif len(parts) == 1:
                             running = parts[0]
 
+                        logger.info(
+                            f"Container status: {status}, {running}, {health}"
+                        )
+
                         # Container is considered available if it's running
                         # and not in the 'starting' health state.
                         if running == "true" and health != "starting":
