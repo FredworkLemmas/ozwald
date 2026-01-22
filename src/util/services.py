@@ -5,11 +5,13 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 
+from util.logger import get_logger
+
 BASE_DIR = Path.cwd()
 env_path = os.path.join(BASE_DIR, ".env")
 dev_settings_path = os.path.join(BASE_DIR, "dev", "resources", "settings.yml")
 load_dotenv(dotenv_path=env_path)
-
+logger = get_logger()
 PROVISIONER_NETWORK = "provisioner_network"
 
 
@@ -52,6 +54,8 @@ def _get_installed_gpu_drivers() -> List[str]:
             drivers.append("amdgpu")
         elif name == "nvidia":
             drivers.append("nvidia")
+
+    logger.info(f"Detected GPU drivers: {drivers}")
     return drivers
 
 
