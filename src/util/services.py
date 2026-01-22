@@ -92,14 +92,19 @@ def remove_provisioner_network() -> None:
 
 def _compose_gpu_opts() -> str:
     drivers = _get_installed_gpu_drivers()
+    opts = []
     if "amdgpu" in drivers:
-        return (
-            "--device /dev/kfd --device /dev/dri "
-            "--security-opt seccomp=unconfined "
-        )
+        opts += [
+            "--device",
+            "/dev/kfd",
+            "--device",
+            "/dev/dri",
+            "--security-opt",
+            "seccomp=unconfined",
+        ]
     if "nvidia" in drivers:
-        return "--gpus all "
-    return ""
+        opts += ["--gpus", "all"]
+    return " ".join(opts)
 
 
 def _get_ozwald_config_filepath() -> dict:
