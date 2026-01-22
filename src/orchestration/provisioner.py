@@ -859,7 +859,7 @@ class SystemProvisioner:
 
         # Measure pre state
         pre = HostResources.inspect_host()
-        logger.debug("pre-state resources: %s", pre)
+        logger.info("pre-state resources: %s", pre)
 
         # Construct a unique service instance name
         inst_name = self._target_service_instance_name(target)
@@ -887,7 +887,7 @@ class SystemProvisioner:
 
         # Measure post state
         post = HostResources.inspect_host()
-        logger.debug("post-state resources: %s", post)
+        logger.info("post-state resources: %s", post)
 
         # Compute deltas
         usage = {
