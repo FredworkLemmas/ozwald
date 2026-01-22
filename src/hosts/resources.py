@@ -228,6 +228,8 @@ class HostResources(BaseModel):
                     "pci_device_description": pci_desc,
                 })
 
+                logger.info(f"nvidia ram: {total_mb} MB")
+
                 total_vram += total_mb
                 available_vram += free_mb
 
