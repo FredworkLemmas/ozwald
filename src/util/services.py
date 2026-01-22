@@ -104,7 +104,7 @@ def _compose_gpu_opts() -> str:
         ]
     if "nvidia" in drivers:
         opts += ["--gpus", "all"]
-    return " ".join(opts)
+    return " ".join(opts) + " " if opts else ""
 
 
 def _get_ozwald_config_filepath() -> dict:
