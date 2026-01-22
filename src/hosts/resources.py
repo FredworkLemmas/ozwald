@@ -3,6 +3,8 @@ import subprocess
 import psutil
 from pydantic import BaseModel, Field
 
+from util.logger import get_logger
+
 try:
     import pynvml
 
@@ -16,6 +18,8 @@ try:
     AMD_AVAILABLE = True
 except (ImportError, AttributeError):
     AMD_AVAILABLE = False
+
+logger = get_logger()
 
 
 class GPUResource(BaseModel):
@@ -124,6 +128,9 @@ class HostResources(BaseModel):
             cls._get_nvidia_gpu_info()
         )
         amd_gpus, amd_total_vram, amd_available_vram = cls._get_amd_gpu_info()
+        logger.info(
+            f"vram - {nvidia_total_vram} (nvidia) +  {amd_total_vram} (amd)"
+        )
 
         # Combine GPU information
         all_gpus = nvidia_gpus + amd_gpus
