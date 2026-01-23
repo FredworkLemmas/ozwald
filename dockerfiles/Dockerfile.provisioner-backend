@@ -1,7 +1,8 @@
-# Use latest Arch Linux
-FROM archlinux:latest
+# Use Ubuntu 24.04
+FROM ubuntu:24.04
 
 # Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
@@ -9,18 +10,19 @@ ENV OZWALD_CONFIG=/etc/ozwald.yml
 ENV OZWALD_PROVISIONER=unconfigured
 
 # Update system and install dependencies
-RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     curl \
     wget \
-    python \
-    python-pip \
-    python-virtualenv \
+    python3 \
+    python3-pip \
+    python3-venv \
     rocm-hip-sdk \
     rocm-opencl-sdk \
     amdsmi \
-    docker \
-    && pacman -Scc --noconfirm
+    docker.io \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -u 1010 ozwald && \
@@ -30,14 +32,15 @@ RUN useradd -m -u 1010 ozwald && \
 # Set working directory
 WORKDIR /app
 
-# Copy project metadata and source
+# Copy project metadata
 COPY pyproject.toml README.md /app/
-COPY src/ /app/src/
 
 # Create virtualenv and install Python dependencies
-RUN python -m virtualenv /venv && \
+RUN python3 -m venv /venv && \
     /venv/bin/pip install --no-cache-dir --upgrade pip && \
     /venv/bin/pip install --no-cache-dir .
+
+COPY src/ /app/src/
 
 # Switch to non-root user
 #USER ozwald
