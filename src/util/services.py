@@ -117,8 +117,8 @@ def start_provisioner_api(
     restart: bool = True,
     mount_source_dir=False,
 ) -> None:
-    container_name = "ozwald-provisioner-api-arch"
-    image_tag = "ozwald-provisioner-api-arch:latest"
+    container_name = "ozwald-provisioner-api"
+    image_tag = "ozwald-provisioner-api:latest"
     port = int(
         port
         if port is not None
@@ -186,7 +186,7 @@ def start_provisioner_api(
 
 
 def stop_provisioner_api() -> None:
-    container_name = "ozwald-provisioner-api-arch"
+    container_name = "ozwald-provisioner-api"
     running = _run(
         f"docker ps --filter name={container_name} --format '{{{{.Names}}}}'",
         capture=True,

@@ -240,7 +240,7 @@ def _docker_network_exists(name: str) -> bool:
 
 def action_status() -> int:
     network = svc.PROVISIONER_NETWORK
-    api = "ozwald-provisioner-api-arch"
+    api = "ozwald-provisioner-api"
     backend = "ozwald-provisioner-backend"
     redis = "ozwald-provisioner-redis"
 
