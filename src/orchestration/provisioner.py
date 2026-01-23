@@ -406,11 +406,11 @@ class SystemProvisioner:
                 e,
             )
             # Do not set completed on failure
-        else:
-            # Mark start completed immediately after
-            # initiating start
-            svc_info.info["start_completed"] = datetime.now().isoformat()
-            updated = True
+        # else:
+        #     # Mark start completed immediately after
+        #     # initiating start
+        #     svc_info.info["start_completed"] = datetime.now().isoformat()
+        #     updated = True
 
         return updated
 
