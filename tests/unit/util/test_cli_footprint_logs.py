@@ -20,5 +20,20 @@ class TestCliFootprintLogs:
         assert out["lines"] == ["a", "b"]
         http_get.assert_called_once()
         args, kwargs = http_get.call_args
-        assert "/srv/services/footprint-logs/svc1/" in args[0]
+        assert "/srv/services/footprint-logs/container/svc1/" in args[0]
         assert kwargs["params"] == {"profile": "p1", "top": 5}
+
+    def test_get_footprint_logs_runner_success(self, mocker):
+        resp = types.SimpleNamespace()
+        resp.status_code = 200
+        resp.json = lambda: {"lines": ["r1"]}
+        resp.raise_for_status = lambda: None
+
+        http_get = mocker.patch("util.cli.http_get", return_value=resp)
+        mocker.patch.dict("os.environ", {"OZWALD_SYSTEM_KEY": "test-key"})
+
+        out = ucli.get_footprint_logs(service_name="svc1", log_type="runner")
+
+        assert out["lines"] == ["r1"]
+        args, _ = http_get.call_args
+        assert "/srv/services/footprint-logs/runner/svc1/" in args[0]

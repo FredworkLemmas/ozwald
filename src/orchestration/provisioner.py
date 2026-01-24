@@ -31,8 +31,8 @@ from .models import (
 )
 
 BACKEND_DAEMON_SLEEP_TIME = 2.0
-SERVICE_START_TIMEOUT = 20.0
-SERVICE_STOP_TIMEOUT = 20.0
+SERVICE_START_TIMEOUT = 3600.0
+SERVICE_STOP_TIMEOUT = 3600.0
 
 logger = get_logger()
 load_dotenv()
@@ -354,7 +354,27 @@ class SystemProvisioner:
         now: datetime,
     ) -> bool:
         updated = False
-        logger.info(f"service {svc_info.name}[{svc_info.service}]is starting")
+
+        # Re-verify status and initiation from the most current cache state
+        # to avoid race conditions with background threads or other
+        # provisioner instances.
+        current_active = self._active_services_cache.get_services()
+        latest_info = next(
+            (s for s in current_active if s.name == svc_info.name), None
+        )
+        if latest_info:
+            if latest_info.status == ServiceStatus.AVAILABLE:
+                logger.info(
+                    f"Service {svc_info.name} is already AVAILABLE, "
+                    "skipping start"
+                )
+                return False
+            # Update our local info with latest from cache to get the
+            # freshest info
+            if latest_info.info:
+                svc_info.info.update(latest_info.info)
+
+        logger.info(f"service {svc_info.name}[{svc_info.service}] is starting")
         # Check duplicate initiation within timeout
         start_initiated_iso = svc_info.info.get(
             "start_initiated",
@@ -421,6 +441,21 @@ class SystemProvisioner:
         now: datetime,
     ) -> bool:
         updated = False
+
+        # Re-verify status and initiation from the most current cache state
+        current_active = self._active_services_cache.get_services()
+        latest_info = next(
+            (s for s in current_active if s.name == svc_info.name), None
+        )
+        if latest_info:
+            if latest_info.status is None:  # Service already removed
+                logger.info(
+                    f"Service {svc_info.name} is already removed, skipping stop"
+                )
+                return False
+            if latest_info.info:
+                svc_info.info.update(latest_info.info)
+
         stop_initiated_iso = svc_info.info.get(
             "stop_initiated",
         )
@@ -838,7 +873,7 @@ class SystemProvisioner:
         target: ConfiguredServiceIdentifier,
     ) -> None:
         """Footprint a single configured service/profile."""
-        logger.debug("entered _footprint_single_service")
+        logger.info("entered _footprint_single_service")
 
         # Lookup service class first
         tmp_svc_info = ServiceInformation(
@@ -865,7 +900,7 @@ class SystemProvisioner:
         inst_name = self._target_service_instance_name(target)
 
         # Activate the service
-        logger.debug(f"starting service {inst_name}")
+        logger.info(f"starting service {inst_name}")
         svc_info = ServiceInformation(
             name=inst_name,
             service=target.service_name,
@@ -883,7 +918,7 @@ class SystemProvisioner:
 
         # Wait for start completed marker
         self._wait_for_start_completed(inst_name, timeout=60.0)
-        logger.debug(f"service {inst_name} started successfully")
+        logger.info(f"service {inst_name} started successfully")
 
         # Measure post state
         post = HostResources.inspect_host()
@@ -900,7 +935,7 @@ class SystemProvisioner:
         }
 
         # Persist to YAML
-        logger.debug(f"writing footprint usage for {target.service_name}")
+        logger.info(f"writing footprint usage for {target.service_name}")
         self._write_footprint_usage(
             SystemUsageDelta(
                 service_name=target.service_name,
@@ -912,7 +947,7 @@ class SystemProvisioner:
 
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
-        logger.debug(f"stopping service {inst_name}")
+        logger.info(f"stopping service {inst_name}")
         self.update_services([])
 
         # Manually trigger stop because the main loop is blocked by us

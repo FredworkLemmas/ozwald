@@ -33,6 +33,30 @@ class TestOzwaldFootprintLogs:
             variety="v1",
             top=10,
             last=None,
+            log_type="container",
+        )
+
+    def test_get_footprint_logs_runner(self, mocker):
+        mock_get_logs = mocker.patch("command.ozwald.ucli.get_footprint_logs")
+        mock_get_logs.return_value = {"lines": ["r1"]}
+        mocker.patch.dict("os.environ", {"OZWALD_SYSTEM_KEY": "test-key"})
+
+        rc = ozwald.main([
+            "get_footprint_logs",
+            "svc1",
+            "--log-type",
+            "runner",
+        ])
+
+        assert rc == 0
+        mock_get_logs.assert_called_once_with(
+            port=8000,
+            service_name="svc1",
+            profile=None,
+            variety=None,
+            top=None,
+            last=None,
+            log_type="runner",
         )
 
     def test_get_footprint_logs_no_service(self, mocker):
