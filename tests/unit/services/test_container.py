@@ -72,7 +72,6 @@ class TestService(ContainerService):
         return [
             "docker",
             "run",
-            "-d",
             "--name",
             self.get_container_name(),
             image,
@@ -88,6 +87,19 @@ class TestContainerServiceHealth:
             cont_mod, "ActiveServicesCache", FakeActiveServicesCache
         )
         monkeypatch.setattr(cont_mod.threading, "Thread", SyncThread)
+
+        class MockProcess:
+            def __init__(self):
+                from unittest.mock import MagicMock
+
+                self.stdout = MagicMock()
+                self.stdout.readline.return_value = ""
+                self.poll = lambda: 0
+                self.returncode = 0
+
+        monkeypatch.setattr(
+            cont_mod.subprocess, "Popen", lambda *a, **k: MockProcess()
+        )
 
         import orchestration.provisioner as prov_mod
 
@@ -121,18 +133,21 @@ class TestContainerServiceHealth:
         inspect_calls = []
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
+            cmd_str = " ".join(cmd)
             if cmd[:2] == ["docker", "ps"]:
                 return CP(0, stdout="")
             if cmd[:2] == ["docker", "run"]:
                 return CP(0, stdout="abc123\n")
-            if cmd[:2] == ["docker", "inspect"]:
+            if "inspect" in cmd_str and ".Id" in cmd_str:
+                return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".State.Status" in cmd_str:
                 inspect_calls.append(cmd)
                 # First two calls return "starting", third returns "healthy"
                 if len(inspect_calls) == 1:
-                    return CP(0, stdout="true starting\n")
+                    return CP(0, stdout="running true starting\n")
                 if len(inspect_calls) == 2:
-                    return CP(0, stdout="true starting\n")
-                return CP(0, stdout="true healthy\n")
+                    return CP(0, stdout="running true starting\n")
+                return CP(0, stdout="running true healthy\n")
             raise AssertionError(f"Unexpected command: {cmd}")
 
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
@@ -162,13 +177,16 @@ class TestContainerServiceHealth:
                 self.stderr = stderr
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
+            cmd_str = " ".join(cmd)
             if cmd[:2] == ["docker", "ps"]:
                 return CP(0, stdout="")
             if cmd[:2] == ["docker", "run"]:
                 return CP(0, stdout="abc123\n")
-            if cmd[:2] == ["docker", "inspect"]:
+            if "inspect" in cmd_str and ".Id" in cmd_str:
+                return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".State.Status" in cmd_str:
                 # Returns "true none" because no healthcheck defined
-                return CP(0, stdout="true none\n")
+                return CP(0, stdout="running true none\n")
             raise AssertionError(f"Unexpected command: {cmd}")
 
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)

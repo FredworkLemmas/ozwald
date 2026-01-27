@@ -295,6 +295,96 @@ async def post_footprint_request(
 
 
 @app.get(
+    "/srv/services/launch-logs/{service_name}/",
+    response_model=FootprintLogLines,
+    summary="Get service launch logs",
+    description="Retrieve cached runner logs for the service launch",
+)
+async def get_service_launch_logs(
+    service_name: str,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+) -> FootprintLogLines:
+    """Retrieve cached runner logs for the service launch."""
+    return await _get_service_runner_logs(
+        service_name=service_name,
+        profile=profile,
+        variety=variety,
+        top=top,
+        last=last,
+    )
+
+
+@app.get(
+    "/srv/services/logs/{service_name}/",
+    response_model=FootprintLogLines,
+    summary="Get service logs",
+    description="Retrieve cached runner logs for the service",
+)
+async def get_service_logs(
+    service_name: str,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+) -> FootprintLogLines:
+    """Retrieve cached runner logs for the service."""
+    return await _get_service_runner_logs(
+        service_name=service_name,
+        profile=profile,
+        variety=variety,
+        top=top,
+        last=last,
+    )
+
+
+async def _get_service_runner_logs(
+    service_name: str,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+) -> FootprintLogLines:
+    provisioner = SystemProvisioner.singleton()
+    cache = provisioner.get_cache()
+
+    # Try to resolve container name from active services
+    active_cache = ActiveServicesCache(cache)
+    active_services = active_cache.get_services()
+
+    instance_name = service_name
+    for s in active_services:
+        if s.service == service_name:
+            if profile and s.profile != profile:
+                continue
+            if variety and s.variety != variety:
+                continue
+            instance_name = s.name
+            break
+
+    container_name = f"service-{instance_name}"
+    runner_logs_cache = RunnerLogsCache(cache)
+    lines = runner_logs_cache.get_log_lines(container_name)
+
+    if top is not None:
+        lines = lines[:top]
+    if last is not None:
+        lines = lines[-last:]
+
+    return FootprintLogLines(
+        service_name=service_name,
+        profile=profile,
+        variety=variety,
+        request_datetime=datetime.now(),
+        is_top_n=top is not None,
+        is_bottom_n=last is not None,
+        lines=lines,
+    )
+
+
+@app.get(
     "/srv/services/footprint-logs/container/{service_name}/",
     response_model=FootprintLogLines,
     summary="Get footprint container logs",

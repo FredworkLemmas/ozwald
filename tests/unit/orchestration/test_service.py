@@ -187,9 +187,15 @@ class TestBaseProvisionableServiceLifecycle:
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
             # Distinguish by first two args
+            cmd_str = " ".join(cmd)
             if cmd[:2] == ["docker", "run"]:
                 # return container id
                 return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".Id" in cmd_str:
+                return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".State.Status" in cmd_str:
+                # indicate running and healthy
+                return CP(0, stdout="running true healthy\n")
             if cmd[:2] == ["docker", "inspect"]:
                 # indicate running
                 return CP(0, stdout="true\n")
@@ -197,6 +203,21 @@ class TestBaseProvisionableServiceLifecycle:
 
         import services.container as cont_mod
 
+        # Mock Popen for the log streaming thread
+        class MockProcess:
+            def __init__(self):
+                from unittest.mock import MagicMock
+
+                self.stdout = MagicMock()
+                self.stdout.readline.return_value = ""
+                self.poll = lambda: 0
+                self.returncode = 0
+
+        monkeypatch.setattr(
+            cont_mod.subprocess,
+            "Popen",
+            lambda *a, **k: MockProcess(),
+        )
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act

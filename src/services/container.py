@@ -116,43 +116,27 @@ class ContainerService(BaseProvisionableService):
                 if not image:
                     logger.error(
                         "No container image specified for service"
-                        "f' {self._service_info.name}",
+                        f" {self._service_info.name}",
                     )
                     return
+
+                container_name = self.get_container_name()
 
                 # Remove any stale container with the same name to avoid
                 # name conflicts on repeated start attempts
                 try:
-                    name = self.get_container_name()
-                    inspect = [
-                        "docker",
-                        "ps",
-                        "-a",
-                        "--filter",
-                        f"name=^{name}$",
-                        "--format",
-                        "{{.Names}}",
-                    ]
-                    check = subprocess.run(
-                        inspect,
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_name],
                         check=False,
                         capture_output=True,
                         text=True,
                     )
-                    exists = any(
-                        line.strip() == name
-                        for line in (check.stdout or "").splitlines()
+                except Exception as e:
+                    # log as info with exception type and msg
+                    logger.info(
+                        "Error removing stale container: "
+                        f"{type(e).__name__}({e})"
                     )
-                    if exists:
-                        subprocess.run(
-                            ["docker", "rm", "-f", name],
-                            check=False,
-                            capture_output=True,
-                            text=True,
-                        )
-                except Exception:
-                    # Best effort cleanup; continue regardless
-                    pass
 
                 # compute the container start command
                 cmd = self.get_container_start_command(image)
@@ -163,17 +147,70 @@ class ContainerService(BaseProvisionableService):
                     f'"{" ".join(cmd)}"',
                 )
 
-                # start the container
-                result = subprocess.run(
+                # start the container in foreground using Popen
+                process = subprocess.Popen(
                     cmd,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
                     text=True,
-                    check=True,
+                    bufsize=1,
                 )
-                container_id = result.stdout.strip()
 
-                # Start streaming logs to Redis for historical access
-                self._stream_logs_to_redis(container_id)
+                # Real-time Log Streaming to Redis
+                def log_reader():
+                    try:
+                        runner_logs_cache = RunnerLogsCache(self._cache)
+                        for line in process.stdout:
+                            if line:
+                                runner_logs_cache.add_log_line(
+                                    container_name,
+                                    line.strip(),
+                                )
+                    except Exception as e:
+                        logger.error(
+                            f"Error in log_reader for {container_name}: {e}"
+                        )
+                    finally:
+                        if process.stdout:
+                            process.stdout.close()
+
+                log_thread = threading.Thread(target=log_reader, daemon=True)
+                log_thread.start()
+
+                # Give it a moment to actually start or fail
+                time.sleep(1)
+                if process.poll() is not None:
+                    logger.error(
+                        f"Container process for {container_name} exited "
+                        f"immediately with code {process.returncode}"
+                    )
+                    return
+
+                # Explicitly fetch the container_id
+                container_id = None
+                for _ in range(10):
+                    id_result = subprocess.run(
+                        [
+                            "docker",
+                            "inspect",
+                            "--format",
+                            "{{.Id}}",
+                            container_name,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if id_result.returncode == 0:
+                        container_id = id_result.stdout.strip()
+                        break
+                    time.sleep(0.5)
+
+                if not container_id:
+                    logger.error(
+                        f"Failed to fetch container ID for {container_name}"
+                    )
 
                 # Wait for container to be running and healthy (if it has a
                 # healthcheck)
@@ -181,14 +218,9 @@ class ContainerService(BaseProvisionableService):
                 wait_interval = 1  # seconds
                 elapsed_time = 0
 
-                logger.info(
-                    f"elapsed time: {elapsed_time}, "
-                    f"max wait time: {max_wait_time}, "
-                    f"wait interval: {wait_interval}"
-                )
-
                 while elapsed_time < max_wait_time:
                     # Check if container is running and its health status
+                    # Using container_name instead of container_id per plan
                     check_cmd = [
                         "docker",
                         "inspect",
@@ -197,7 +229,7 @@ class ContainerService(BaseProvisionableService):
                             "{{if .State.Health}}{{.State.Health.Status}}"
                             "{{else}}none{{end}}"
                         ),
-                        container_id,
+                        container_name,
                     ]
                     check_result = subprocess.run(
                         check_cmd,
@@ -219,10 +251,6 @@ class ContainerService(BaseProvisionableService):
                             running, health = parts
                         elif len(parts) == 1:
                             running = parts[0]
-
-                        logger.info(
-                            f"Container status: {status}, {running}, {health}"
-                        )
 
                         # Container is considered available if it's running
                         # and not in the 'starting' health state.
@@ -246,7 +274,10 @@ class ContainerService(BaseProvisionableService):
                                     service.status = ServiceStatus.AVAILABLE
                                     if service.info is None:
                                         service.info = {}
-                                    service.info["container_id"] = container_id
+                                    if container_id:
+                                        service.info["container_id"] = (
+                                            container_id
+                                        )
                                     service.info["container_status"] = status
                                     if health != "none":
                                         service.info["container_health"] = (
@@ -263,42 +294,22 @@ class ContainerService(BaseProvisionableService):
                             )
                             return
 
-                        if running != "true":
+                        if running != "true" and process.poll() is not None:
                             logger.error(
                                 f"Container for service "
                                 f"{self._service_info.name} stopped "
                                 "unexpectedly",
                             )
-                            # Give a small delay for logs to flush in Docker
-                            time.sleep(1)
-                            self._capture_final_logs(container_id)
                             return
 
-                    logger.info("Container not yet ready, waiting...")
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
-                    logger.info(
-                        f"elapsed time: {elapsed_time}, "
-                        f"max wait time: {max_wait_time}, "
-                        f"wait interval: {wait_interval}"
-                    )
-
-                # Start streaming logs to Redis for historical access
-                # self._stream_logs_to_redis(container_id)
 
                 logger.error(
                     f"Container for service {self._service_info.name} did not"
                     " start within the expected time",
                 )
-            except subprocess.CalledProcessError as e:
-                # self._stream_logs_to_redis(container_id)
-
-                logger.error(
-                    f"Failed to start container for service"
-                    f" {self._service_info.name}: {e}",
-                )
             except Exception as e:
-                # self._stream_logs_to_redis(container_id)
                 logger.error(
                     "Unexpected error starting service "
                     f"{self._service_info.name}: {e}",
@@ -347,11 +358,6 @@ class ContainerService(BaseProvisionableService):
                 else:
                     container_identifier = self.get_container_name()
 
-                self._stream_logs_to_redis(container_identifier)
-                # Give the streaming thread a moment to establish connection
-                # before we remove the container
-                time.sleep(2)
-
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
                     stop_cmd,
@@ -395,77 +401,6 @@ class ContainerService(BaseProvisionableService):
 
         container_thread = threading.Thread(target=stop_container, daemon=True)
         container_thread.start()
-
-    def _stream_logs_to_redis(self, container_id: str):
-        """Stream container logs to Redis in a background thread."""
-        container_name = self.get_container_name()
-        runner_logs_cache = RunnerLogsCache(self._cache)
-
-        def stream_thread():
-            # Use a Redis lock-like key to ensure only one streaming thread
-            # per container ID
-            lock_key = f"streaming_logs:{container_id}"
-            redis_client = runner_logs_cache._redis_client
-
-            # Try to acquire a "lock" for this container's logs to avoid
-            # duplicates if multiple threads/processes call this for the
-            # same container ID.
-            if not redis_client.set(lock_key, "1", nx=True, ex=3600):
-                logger.debug(
-                    f"Streaming thread for container {container_id} already "
-                    "initiated"
-                )
-                return
-
-            try:
-                # Use binary mode and larger buffer for robustness
-                process = subprocess.Popen(
-                    ["docker", "logs", "-f", container_id],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    bufsize=64 * 1024,
-                )
-                if process.stdout:
-                    # Read lines from binary stream and decode safely
-                    for line_bytes in iter(process.stdout.readline, b""):
-                        line = line_bytes.decode("utf-8", errors="replace")
-                        runner_logs_cache.add_log_line(
-                            container_name,
-                            line.rstrip(),
-                        )
-            except Exception as e:
-                logger.error(
-                    f"Error streaming logs for container {container_id}: {e}"
-                )
-
-        thread = threading.Thread(target=stream_thread, daemon=True)
-        thread.start()
-
-    def _capture_final_logs(self, container_id: str):
-        """Perform a final log capture for a container."""
-        container_name = self.get_container_name()
-        runner_logs_cache = RunnerLogsCache(self._cache)
-        try:
-            logger.info(f"Capturing final logs for container {container_id}")
-            # docker logs without -f to get the full history
-            result = subprocess.run(
-                ["docker", "logs", container_id],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                check=False,
-            )
-            if result.stdout:
-                # This might introduce some duplicates if the streaming
-                # thread was partially successful, but ensures we get
-                # everything if it failed.
-                lines = result.stdout.splitlines()
-                # To minimize duplicates, we could compare with what's
-                # already in Redis, but for now we just append.
-                # Actually, the user wants the FULL logs.
-                runner_logs_cache.add_log_lines(container_name, lines)
-        except Exception as e:
-            logger.error(f"Failed to capture final logs: {e}")
 
     # --- Effective configuration helpers ---
     def _resolve_effective_fields(
@@ -663,7 +598,7 @@ class ContainerService(BaseProvisionableService):
         return f"service-{self._service_info.name}"
 
     def get_container_options__standard(self) -> list[str]:
-        return ["-d", "--name", self.get_container_name()]
+        return ["--name", self.get_container_name()]
 
     def get_container_options__gpu(self) -> list[str]:
         gpu_opts = []
