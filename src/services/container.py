@@ -163,6 +163,9 @@ class ContainerService(BaseProvisionableService):
                         runner_logs_cache = RunnerLogsCache(self._cache)
                         for line in process.stdout:
                             if line:
+                                logger.info(
+                                    f"Container {container_name}: {line}"
+                                )
                                 runner_logs_cache.add_log_line(
                                     container_name,
                                     line.strip(),
