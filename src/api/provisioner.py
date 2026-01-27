@@ -544,6 +544,8 @@ async def get_footprint_runner_logs(
     runner_logs_cache = RunnerLogsCache(cache)
     lines = runner_logs_cache.get_log_lines(container_name)
 
+    logger.info(f"fetching logs for {container_name}: {lines}")
+
     if top is not None:
         lines = lines[:top]
     if last is not None:
