@@ -514,6 +514,9 @@ async def get_footprint_runner_logs(
     last: int | None = None,
 ) -> FootprintLogLines:
     """Retrieve cached runner logs for the footprint run of a service."""
+
+    logger.info(f"Retrieving footprint runner logs for service: {service_name}")
+
     provisioner = SystemProvisioner.singleton()
     services = provisioner.get_configured_services()
     service_def = next(
