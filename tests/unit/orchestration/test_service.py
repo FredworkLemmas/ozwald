@@ -55,7 +55,7 @@ class DummyProvisioner:
         return self._cache
 
 
-class TestService(ContainerService):
+class FakeContainerServiceOrch(ContainerService):
     __test__ = False  # prevent pytest from treating this as a test container
     service_type = "test"
     container_image: str = "alpine:latest"
@@ -139,7 +139,7 @@ def _si(
 
 class TestBaseProvisionableServiceLifecycle:
     def test_start_raises_when_service_not_in_cache(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STARTING))
 
         # The FakeActiveServicesCache starts empty; expect RuntimeError
         with pytest.raises(RuntimeError) as ei:
@@ -147,7 +147,7 @@ class TestBaseProvisionableServiceLifecycle:
         assert "not found" in str(ei.value)
 
     def test_start_raises_when_status_not_starting(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.AVAILABLE))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.AVAILABLE))
 
         # Seed cache with AVAILABLE instead of STARTING
         cache = FakeActiveServicesCache(Cache(type="memory"))
@@ -168,7 +168,7 @@ class TestBaseProvisionableServiceLifecycle:
         self,
         monkeypatch,
     ):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STARTING))
 
         # Pre-seed active services with STARTING entry
         cache = FakeActiveServicesCache(Cache(type="memory"))
@@ -188,6 +188,8 @@ class TestBaseProvisionableServiceLifecycle:
         def fake_run(cmd, capture_output=False, text=False, check=False):
             # Distinguish by first two args
             cmd_str = " ".join(cmd)
+            if cmd[:3] == ["docker", "rm", "-f"]:
+                return CP(0)
             if cmd[:2] == ["docker", "run"]:
                 # return container id
                 return CP(0, stdout="abc123\n")
@@ -210,7 +212,7 @@ class TestBaseProvisionableServiceLifecycle:
 
                 self.stdout = MagicMock()
                 self.stdout.readline.return_value = ""
-                self.poll = lambda: 0
+                self.poll = lambda: None  # Simulate running
                 self.returncode = 0
 
         monkeypatch.setattr(
@@ -234,14 +236,14 @@ class TestBaseProvisionableServiceLifecycle:
         assert s.info.get("start_completed") is not None
 
     def test_stop_raises_when_service_not_in_cache(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STOPPING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STOPPING))
         # No services in cache -> error
         with pytest.raises(RuntimeError) as ei:
             svc.stop()
         assert "not found" in str(ei.value)
 
     def test_stop_raises_when_status_not_stopping(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.AVAILABLE))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.AVAILABLE))
 
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.AVAILABLE)]
@@ -258,7 +260,7 @@ class TestBaseProvisionableServiceLifecycle:
         self,
         monkeypatch,
     ):
-        svc = TestService(_si("svc1", ServiceStatus.STOPPING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STOPPING))
 
         # Seed cache with one running service, including a container_id
         si = _si("svc1", ServiceStatus.STOPPING)

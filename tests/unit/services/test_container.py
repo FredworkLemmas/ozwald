@@ -53,7 +53,7 @@ def _si(name: str, status: ServiceStatus | None, profile: str = "default"):
     )
 
 
-class TestService(ContainerService):
+class FakeContainerService(ContainerService):
     service_type = "test"
 
     def __init__(self, service_info: ServiceInformation):
@@ -94,7 +94,7 @@ class TestContainerServiceHealth:
 
                 self.stdout = MagicMock()
                 self.stdout.readline.return_value = ""
-                self.poll = lambda: 0
+                self.poll = lambda: None
                 self.returncode = 0
 
         monkeypatch.setattr(
@@ -115,7 +115,7 @@ class TestContainerServiceHealth:
         )
 
     def test_start_waits_for_healthy(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerService(_si("svc1", ServiceStatus.STARTING))
 
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.STARTING)]
@@ -134,6 +134,8 @@ class TestContainerServiceHealth:
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
             cmd_str = " ".join(cmd)
+            if cmd[:3] == ["docker", "rm", "-f"]:
+                return CP(0)
             if cmd[:2] == ["docker", "ps"]:
                 return CP(0, stdout="")
             if cmd[:2] == ["docker", "run"]:
@@ -161,7 +163,7 @@ class TestContainerServiceHealth:
         assert cache.get_services()[0].status == ServiceStatus.AVAILABLE
 
     def test_start_running_no_healthcheck(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerService(_si("svc1", ServiceStatus.STARTING))
 
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.STARTING)]
@@ -178,6 +180,8 @@ class TestContainerServiceHealth:
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
             cmd_str = " ".join(cmd)
+            if cmd[:3] == ["docker", "rm", "-f"]:
+                return CP(0)
             if cmd[:2] == ["docker", "ps"]:
                 return CP(0, stdout="")
             if cmd[:2] == ["docker", "run"]:
