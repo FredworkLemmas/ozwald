@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 from hosts.resources import HostResources
 from orchestration.models import (
-    FootprintConfig,
+    EffectiveServiceDefinition,
     ServiceInformation,
     ServiceStatus,
 )
@@ -58,6 +58,20 @@ class ContainerService(BaseProvisionableService):
     # --- Generic helpers used by container logic ---
     def get_variety(self) -> str | None:
         return getattr(self._service_info, "variety", None)
+
+    @property
+    def effective_definition(self) -> EffectiveServiceDefinition:
+        if not hasattr(self, "_effective_def") or self._effective_def is None:
+            from config.reader import SystemConfigReader
+
+            reader = SystemConfigReader.singleton()
+            si = self.get_service_information()
+            self._effective_def = reader.get_effective_service_definition(
+                si.service,
+                si.profile,
+                si.variety,
+            )
+        return self._effective_def
 
     # --- Lifecycle: start/stop container ---
     def start(self):
@@ -413,215 +427,36 @@ class ContainerService(BaseProvisionableService):
         container_thread = threading.Thread(target=stop_container, daemon=True)
         container_thread.start()
 
-    # --- Effective configuration helpers ---
-    def _resolve_effective_fields(
-        self,
-        service_def,
-        profile_name: str | None,
-        variety_name: str | None,
-    ) -> dict[str, Any]:
-        # Delegate to base get_service_definition but keep logic local
-        base_env = service_def.environment or {}
-        base_depends_on = service_def.depends_on or []
-        base_command = service_def.command
-        base_entrypoint = service_def.entrypoint
-        base_env_file = service_def.env_file
-        base_image = service_def.image
-        base_vols = list(service_def.volumes or [])
-
-        v = None
-        if variety_name:
-            try:
-                v = (service_def.varieties or {}).get(variety_name)
-            except Exception:
-                v = None
-
-        v_env = (v.environment if v else None) or {}
-        v_depends_on = (v.depends_on if v else None) or []
-        v_command = v.command if v else None
-        v_entrypoint = v.entrypoint if v else None
-        v_env_file = (v.env_file if v else None) or None
-        v_image = (v.image if v else None) or None
-        v_vols = list(getattr(v, "volumes", []) or [])
-
-        p = None
-        if profile_name:
-            try:
-                p = (service_def.profiles or {}).get(profile_name)
-            except Exception:
-                p = None
-
-        p_env = (p.environment if p else None) or {}
-        p_depends_on = (p.depends_on if p else None) or []
-        p_command = p.command if p else None
-        p_entrypoint = p.entrypoint if p else None
-        p_env_file = (p.env_file if p else None) or None
-        p_image = (p.image if p else None) or None
-        p_vols = list(getattr(p, "volumes", []) or [])
-
-        base_footprint = service_def.footprint
-        v_footprint = getattr(v, "footprint", None) if v else None
-        p_footprint = getattr(p, "footprint", None) if p else None
-
-        merged_env = {**base_env, **v_env, **p_env}
-
-        def _target_of(vol_spec: str) -> str:
-            try:
-                # vol_spec format examples:
-                #   /host:/ctr:ro
-                #   name:/ctr:rw
-                #   /host:/ctr (no mode)
-                _host, rest = vol_spec.split(":", 1)
-                target = rest.split(":", 1)[0]
-                return target
-            except Exception:
-                return ""
-
-        def _merge_volumes(
-            base_list: list[str],
-            var_list: list[str],
-            prof_list: list[str],
-        ) -> list[str]:
-            order: list[str] = []  # target order
-            by_target: dict[str, str] = {}
-
-            def add_many(lst: list[str]):
-                for spec in lst:
-                    t = _target_of(spec)
-                    if not t:
-                        continue
-                    if t in by_target:
-                        # replace, keep position
-                        by_target[t] = spec
-                    else:
-                        by_target[t] = spec
-                        order.append(t)
-
-            add_many(base_list)
-            add_many(v_vols)
-            add_many(prof_list)
-            return [by_target[t] for t in order]
-
-        merged_vols = _merge_volumes(base_vols, v_vols, p_vols)
-
-        def _merge_footprint(base, prof, var) -> FootprintConfig | None:
-            res_dict = {}
-            for config in [base, prof, var]:
-                if config:
-                    res_dict.update(
-                        config.model_dump(by_alias=True, exclude_none=True),
-                    )
-            return FootprintConfig(**res_dict) if res_dict else None
-
-        merged_footprint = _merge_footprint(
-            base_footprint,
-            p_footprint,
-            v_footprint,
-        )
-
-        def choose(*vals):
-            for val in vals:
-                if isinstance(val, str):
-                    if val.strip():
-                        return val
-                elif isinstance(val, (list, tuple)):
-                    if len(val) > 0:
-                        return list(val)
-                elif val is not None:
-                    return val
-            return None
-
-        effective = {
-            "environment": merged_env,
-            "depends_on": choose(p_depends_on, v_depends_on, base_depends_on)
-            or [],
-            "command": choose(p_command, v_command, base_command),
-            "entrypoint": choose(p_entrypoint, v_entrypoint, base_entrypoint),
-            "env_file": choose(p_env_file, v_env_file, base_env_file) or [],
-            "image": choose(p_image, v_image, base_image) or "",
-            "volumes": merged_vols,
-            "footprint": merged_footprint,
-        }
-        return effective
-
-    def _get_effective_environment(
-        self,
-        service_info: ServiceInformation,
-    ) -> dict:
-        service_def = self.get_service_definition()
-        variety = self.get_variety()
-        resolved = self._resolve_effective_fields(
-            service_def,
-            service_info.profile,
-            variety,
-        )
-        return resolved.get("environment", {}) or {}
-
     # --- Container configuration accessors and options builders ---
     def get_container_image(self):
         if self.container_image:
             return self.container_image
         try:
-            service_info = self.get_service_information()
-            service_def = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                service_def,
-                service_info.profile,
-                service_info.variety,
-            )
-            return resolved.get("image") or ""
+            return self.effective_definition.image
         except Exception:
             return ""
 
     def get_effective_depends_on(self) -> list[str]:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("depends_on") or []
+            return self.effective_definition.depends_on
         except Exception:
             return []
 
     def get_effective_command(self) -> Any:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("command")
+            return self.effective_definition.command
         except Exception:
             return None
 
     def get_effective_entrypoint(self) -> Any:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("entrypoint")
+            return self.effective_definition.entrypoint
         except Exception:
             return None
 
     def get_effective_env_file(self) -> list[str]:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("env_file") or []
+            return self.effective_definition.env_file
         except Exception:
             return []
 
@@ -699,9 +534,7 @@ class ContainerService(BaseProvisionableService):
         if self.container_environment is not None:
             return self.container_environment
         try:
-            return self._get_effective_environment(
-                self.get_service_information(),
-            )
+            return self.effective_definition.environment
         except Exception:
             return None
 
@@ -710,14 +543,7 @@ class ContainerService(BaseProvisionableService):
             return self.container_volumes
         # Resolve volumes with profile/variety-aware merge
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("volumes") or []
+            return self.effective_definition.volumes
         except Exception:
             return None
 

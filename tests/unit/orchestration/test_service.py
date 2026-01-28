@@ -426,6 +426,7 @@ class TestEffectiveConfigResolution:
         # Fake SystemConfigReader.singleton() -> object with get_service_by_name
 
         from config import reader as reader_mod
+        from config.reader import ConfigReader
 
         class DummyReader:
             def __init__(self, svc_def):
@@ -433,6 +434,19 @@ class TestEffectiveConfigResolution:
 
             def get_service_by_name(self, name: str):
                 return self._svc
+
+            def get_effective_service_definition(
+                self,
+                service,
+                profile,
+                variety,
+            ):
+                return ConfigReader.get_effective_service_definition(
+                    self,
+                    service,
+                    profile,
+                    variety,
+                )
 
         svc_def = self._build_service_def()
         dummy = DummyReader(svc_def)

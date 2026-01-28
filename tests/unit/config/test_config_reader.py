@@ -267,12 +267,9 @@ class TestServiceParsing:
         tmp_path,
         sample_config_dict,
     ):
-        """Verify that a profile's environment inherits keys from the base
-        service environment and overrides conflicting keys.
-        Base < Profile precedence for environment.
+        """Verify merge of environment values from base to profile via
+        get_effective_service_definition.
         """
-        # Arrange: clone sample config and add an override for MODEL_NAME in
-        # profile
         cfg = sample_config_dict
         # Ensure base has MODEL_NAME
         svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
@@ -291,16 +288,13 @@ class TestServiceParsing:
 
         # Act
         reader = ConfigReader(str(pth))
-        qwen_service = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+        eff = reader.get_effective_service_definition(
+            "qwen1.5-vllm", "embed", None
         )
-        embed_profile = qwen_service.profiles["embed"]
 
         # Assert: inherited non-conflicting key and overridden conflicting key
-        assert embed_profile.environment["MODEL_NAME"] == "profile-model/name"
-        # Also ensure another base key remains present (if any). If none,
-        # assert presence of override keys
-        assert "GPU_MEMORY_UTILIZATION" in embed_profile.environment
+        assert eff.environment["MODEL_NAME"] == "profile-model/name"
+        assert "GPU_MEMORY_UTILIZATION" in eff.environment
 
     def test_variety_overrides_base_but_profile_overrides_variety(
         self,
@@ -308,7 +302,7 @@ class TestServiceParsing:
         sample_config_dict,
     ):
         """Verify precedence order for environment values: base < variety <
-        profile.
+        profile via get_effective_service_definition.
         """
         cfg = sample_config_dict
         svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
@@ -333,17 +327,18 @@ class TestServiceParsing:
 
         # Act
         reader = ConfigReader(str(pth))
-        qwen = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+
+        # Test effective with variety only
+        eff_v = reader.get_effective_service_definition(
+            "qwen1.5-vllm", None, "cpu-only"
         )
-        # Variety wins over base at the variety level
-        assert (
-            qwen.varieties["cpu-only"].environment.get("FOO", "base")
-            == "variety"
+        assert eff_v.environment["FOO"] == "variety"
+
+        # Test effective with profile (overrides variety and base)
+        eff_p = reader.get_effective_service_definition(
+            "qwen1.5-vllm", "embed", "cpu-only"
         )
-        # Profile wins over both
-        embed = qwen.profiles["embed"]
-        assert embed.environment["FOO"] == "profile"
+        assert eff_p.environment["FOO"] == "profile"
 
     def test_service_without_profiles(self, sample_config_file):
         """Verify that services without profiles have an empty profiles list."""
@@ -557,7 +552,9 @@ class TestFootprintParsing:
         assert svc.footprint.run_script == "base.sh"
 
     def test_footprint_parsing_profile_merge(self, tmp_path):
-        """Verify that footprint is merged in profiles during parsing."""
+        """
+        Verify that footprint is merged via get_effective_service_definition.
+        """
         cfg = {
             "services": [
                 {
@@ -585,15 +582,16 @@ class TestFootprintParsing:
 
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
-        svc = reader.get_service_by_name("svc")
 
-        p1 = svc.profiles["p1"]
-        assert p1.footprint.run_time == 60
-        assert p1.footprint.run_script == "base.sh"
+        # Check effective for p1
+        eff1 = reader.get_effective_service_definition("svc", "p1", None)
+        assert eff1.footprint.run_time == 60
+        assert eff1.footprint.run_script == "base.sh"
 
-        p2 = svc.profiles["p2"]
-        assert p2.footprint.run_time == 30
-        assert p2.footprint.run_script == "base.sh"
+        # Check effective for p2
+        eff2 = reader.get_effective_service_definition("svc", "p2", None)
+        assert eff2.footprint.run_time == 30
+        assert eff2.footprint.run_script == "base.sh"
 
     def test_footprint_parsing_variety(self, tmp_path):
         """Verify that footprint is extracted for varieties."""
@@ -622,3 +620,85 @@ class TestFootprintParsing:
         v1 = svc.varieties["v1"]
         assert v1.footprint.run_script == "var.sh"
         assert v1.footprint.run_time is None
+
+
+class TestEffectiveServiceDefinition:
+    """Tests for the get_effective_service_definition method."""
+
+    def test_merge_precedence(self, tmp_path):
+        """Verify merge precedence: Profile > Variety > Base."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "image": "base-img",
+                    "environment": {"K1": "base-v1", "K2": "base-v2"},
+                    "varieties": {
+                        "v1": {
+                            "image": "var-img",
+                            "environment": {"K2": "var-v2", "K3": "var-v3"},
+                        }
+                    },
+                    "profiles": {
+                        "p1": {
+                            "image": "prof-img",
+                            "environment": {"K3": "prof-v3", "K4": "prof-v4"},
+                        }
+                    },
+                }
+            ]
+        }
+        cfg_path = tmp_path / "test_effective.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+
+        # image: Profile > Variety > Base
+        assert eff.image == "prof-img"
+        # environment: merged, Profile > Variety > Base
+        assert eff.environment["K1"] == "base-v1"
+        assert eff.environment["K2"] == "var-v2"
+        assert eff.environment["K3"] == "prof-v3"
+        assert eff.environment["K4"] == "prof-v4"
+
+    def test_volume_merging(self, tmp_path):
+        """Verify volume merging by target precedence."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "volumes": ["/host1:/t1:ro", "/host2:/t2:rw"],
+                    "varieties": {
+                        "v1": {"volumes": ["/host3:/t2:ro", "/host4:/t3:rw"]}
+                    },
+                    "profiles": {
+                        "p1": {"volumes": ["/host5:/t1:rw", "/host6:/t4:ro"]}
+                    },
+                }
+            ]
+        }
+        cfg_path = tmp_path / "test_vols.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+
+        # /t1: Profile overrides Base
+        # /t2: Variety overrides Base
+        # /t3: Variety
+        # /t4: Profile
+        # Order should be base order then var then prof
+        expected = [
+            "/host5:/t1:rw",  # t1 from prof (replaces base position)
+            "/host3:/t2:ro",  # t2 from var (replaces base position)
+            "/host4:/t3:rw",  # t3 from var
+            "/host6:/t4:ro",  # t4 from prof
+        ]
+        assert eff.volumes == expected

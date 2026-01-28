@@ -150,6 +150,17 @@ class ServiceDefinition(BaseModel):
         return (self.profiles or {}).get(name)
 
 
+class EffectiveServiceDefinition(BaseModel):
+    image: str = ""
+    environment: dict[str, Any] = Field(default_factory=dict)
+    depends_on: list[str] = Field(default_factory=list)
+    command: list[str] | str | None = None
+    entrypoint: list[str] | str | None = None
+    env_file: list[str] = Field(default_factory=list)
+    volumes: list[str] = Field(default_factory=list)
+    footprint: FootprintConfig | None = None
+
+
 # ============================================================================
 # Service Usage Models (Runtime)
 # ============================================================================
