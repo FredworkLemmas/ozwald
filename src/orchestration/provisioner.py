@@ -920,6 +920,16 @@ class SystemProvisioner:
         self._wait_for_start_completed(inst_name, timeout=60.0)
         logger.info(f"service {inst_name} started successfully")
 
+        # wait for configured run time
+        reader = self.config_reader
+        effective_service_def = reader.get_effective_service_definition(
+            target.service_name,
+            target.profile,
+            target.variety,
+        )
+        footprint_config = effective_service_def.footprint
+        time.sleep(footprint_config.run_time)
+
         # Measure post state
         post = HostResources.inspect_host()
         logger.info("post-state resources: %s", post)
