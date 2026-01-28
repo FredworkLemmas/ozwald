@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 
 from hosts.resources import HostResources
 from orchestration.models import ServiceInformation, ServiceStatus
+from orchestration.provisioner import SystemProvisioner
 from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.logger import get_logger
@@ -160,7 +161,10 @@ class ContainerService(BaseProvisionableService):
                 # Real-time Log Streaming to Redis
                 def log_reader():
                     try:
-                        runner_logs_cache = RunnerLogsCache(self._cache)
+                        provisioner = SystemProvisioner.singleton()
+                        runner_logs_cache = RunnerLogsCache(
+                            provisioner.get_cache()
+                        )
                         for line in process.stdout:
                             if line:
                                 logger.info(
