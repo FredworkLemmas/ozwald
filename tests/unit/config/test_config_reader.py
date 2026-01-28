@@ -527,3 +527,98 @@ class TestVolumesInProfilesVarieties:
         profP = svc.profiles.get("P")
         assert profP is not None
         assert any(v.endswith(":/t1:rw") for v in profP.volumes)
+
+
+class TestFootprintParsing:
+    """Tests for parsing footprint configurations."""
+
+    def test_footprint_parsing_simple(self, tmp_path):
+        """Verify that footprint is parsed from base service definition."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "footprint": {
+                        "run-time": 30,
+                        "run-script": "base.sh",
+                    },
+                },
+            ],
+        }
+        cfg_path = tmp_path / "test_footprint.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+        svc = reader.get_service_by_name("svc")
+        assert svc.footprint is not None
+        assert svc.footprint.run_time == 30
+        assert svc.footprint.run_script == "base.sh"
+
+    def test_footprint_parsing_profile_merge(self, tmp_path):
+        """Verify that footprint is merged in profiles during parsing."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "footprint": {
+                        "run-time": 30,
+                        "run-script": "base.sh",
+                    },
+                    "profiles": {
+                        "p1": {
+                            "footprint": {
+                                "run-time": 60,
+                            },
+                        },
+                        "p2": {
+                            "description": "no footprint override",
+                        },
+                    },
+                },
+            ],
+        }
+        cfg_path = tmp_path / "test_footprint_profile.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+        svc = reader.get_service_by_name("svc")
+
+        p1 = svc.profiles["p1"]
+        assert p1.footprint.run_time == 60
+        assert p1.footprint.run_script == "base.sh"
+
+        p2 = svc.profiles["p2"]
+        assert p2.footprint.run_time == 30
+        assert p2.footprint.run_script == "base.sh"
+
+    def test_footprint_parsing_variety(self, tmp_path):
+        """Verify that footprint is extracted for varieties."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "varieties": {
+                        "v1": {
+                            "footprint": {
+                                "run-script": "var.sh",
+                            },
+                        },
+                    },
+                },
+            ],
+        }
+        cfg_path = tmp_path / "test_footprint_variety.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+        svc = reader.get_service_by_name("svc")
+
+        v1 = svc.varieties["v1"]
+        assert v1.footprint.run_script == "var.sh"
+        assert v1.footprint.run_time is None

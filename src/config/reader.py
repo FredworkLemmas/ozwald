@@ -6,6 +6,7 @@ import yaml
 
 from orchestration.models import (
     Cache,
+    FootprintConfig,
     Host,
     Provisioner,
     Resource,
@@ -211,6 +212,12 @@ class ConfigReader:
             parent_entrypoint = service_data.get("entrypoint")
             parent_env_file = service_data.get("env_file", []) or []
             parent_image = service_data.get("image", "") or ""
+            parent_footprint_data = service_data.get("footprint")
+            parent_footprint = (
+                FootprintConfig(**parent_footprint_data)
+                if parent_footprint_data
+                else None
+            )
 
             # Parse profiles (support both dict-of-dicts and list-of-dicts)
             profiles: List[ServiceDefinitionProfile] = []
@@ -243,6 +250,23 @@ class ConfigReader:
                     profile_data.get("volumes", []),
                 )
 
+                # Merge footprint
+                profile_footprint_data = profile_data.get("footprint")
+                if profile_footprint_data:
+                    # Create effective footprint by merging parent and profile
+                    merged_footprint_dict = {}
+                    if parent_footprint:
+                        merged_footprint_dict.update(
+                            parent_footprint.model_dump(
+                                by_alias=True,
+                                exclude_none=True,
+                            ),
+                        )
+                    merged_footprint_dict.update(profile_footprint_data)
+                    profile_footprint = FootprintConfig(**merged_footprint_dict)
+                else:
+                    profile_footprint = parent_footprint
+
                 profile = ServiceDefinitionProfile(
                     name=name,
                     description=profile_data.get("description"),
@@ -256,6 +280,7 @@ class ConfigReader:
                     env_file=env_file,
                     environment=env,
                     volumes=prof_vols,
+                    footprint=profile_footprint,
                 )
                 profiles.append(profile)
 
@@ -267,6 +292,12 @@ class ConfigReader:
             for variety_name, variety_data in varieties_data.items():
                 v_vols = self._normalize_service_volumes(
                     variety_data.get("volumes", []),
+                )
+                v_footprint_data = variety_data.get("footprint")
+                v_footprint = (
+                    FootprintConfig(**v_footprint_data)
+                    if v_footprint_data
+                    else None
                 )
                 v = ServiceDefinitionVariety(
                     image=variety_data.get("image", parent_image)
@@ -283,6 +314,7 @@ class ConfigReader:
                     or parent_env_file,
                     environment=variety_data.get("environment", {}),
                     volumes=v_vols,
+                    footprint=v_footprint,
                 )
                 varieties[variety_name] = v
                 if default_image_from_variety is None and v.image:
@@ -311,6 +343,7 @@ class ConfigReader:
                 env_file=parent_env_file,
                 environment=parent_env,
                 volumes=svc_vols,
+                footprint=parent_footprint,
                 profiles=profiles_dict,
                 varieties=varieties,
             )

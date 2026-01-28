@@ -7,7 +7,11 @@ from datetime import datetime
 from typing import Any, ClassVar
 
 from hosts.resources import HostResources
-from orchestration.models import ServiceInformation, ServiceStatus
+from orchestration.models import (
+    FootprintConfig,
+    ServiceInformation,
+    ServiceStatus,
+)
 from orchestration.provisioner import SystemProvisioner
 from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
@@ -455,6 +459,10 @@ class ContainerService(BaseProvisionableService):
         p_image = (p.image if p else None) or None
         p_vols = list(getattr(p, "volumes", []) or [])
 
+        base_footprint = service_def.footprint
+        v_footprint = getattr(v, "footprint", None) if v else None
+        p_footprint = getattr(p, "footprint", None) if p else None
+
         merged_env = {**base_env, **v_env, **p_env}
 
         def _target_of(vol_spec: str) -> str:
@@ -496,6 +504,21 @@ class ContainerService(BaseProvisionableService):
 
         merged_vols = _merge_volumes(base_vols, v_vols, p_vols)
 
+        def _merge_footprint(base, prof, var) -> FootprintConfig | None:
+            res_dict = {}
+            for config in [base, prof, var]:
+                if config:
+                    res_dict.update(
+                        config.model_dump(by_alias=True, exclude_none=True),
+                    )
+            return FootprintConfig(**res_dict) if res_dict else None
+
+        merged_footprint = _merge_footprint(
+            base_footprint,
+            p_footprint,
+            v_footprint,
+        )
+
         def choose(*vals):
             for val in vals:
                 if isinstance(val, str):
@@ -517,6 +540,7 @@ class ContainerService(BaseProvisionableService):
             "env_file": choose(p_env_file, v_env_file, base_env_file) or [],
             "image": choose(p_image, v_image, base_image) or "",
             "volumes": merged_vols,
+            "footprint": merged_footprint,
         }
         return effective
 

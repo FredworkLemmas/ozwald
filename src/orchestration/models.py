@@ -43,6 +43,11 @@ class Host(BaseModel):
 # ============================================================================
 
 
+class FootprintConfig(BaseModel):
+    run_time: int | None = Field(default=None, alias="run-time")
+    run_script: str | None = Field(default=None, alias="run-script")
+
+
 class ConfiguredServiceIdentifier(BaseModel):
     service_name: str
     profile: str | None = None
@@ -98,6 +103,7 @@ class ServiceDefinitionProfile(BaseModel):
     # Normalized docker volume strings, e.g. "/host:/ctr:ro" or
     # "named_vol:/ctr:rw"
     volumes: list[str] = Field(default_factory=list)
+    footprint: FootprintConfig | None = None
 
 
 class ServiceDefinitionVariety(BaseModel):
@@ -109,6 +115,7 @@ class ServiceDefinitionVariety(BaseModel):
     environment: dict[str, Any] | None = Field(default_factory=dict)
     # Normalized docker volume strings, same format as on the base service
     volumes: list[str] = Field(default_factory=list)
+    footprint: FootprintConfig | None = None
 
 
 class ServiceDefinition(BaseModel):
@@ -128,6 +135,7 @@ class ServiceDefinition(BaseModel):
     # List of normalized volume mount strings ready for docker CLI, e.g.,
     # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
     volumes: list[str] | None = Field(default_factory=list)
+    footprint: FootprintConfig | None = None
     profiles: dict[str, ServiceDefinitionProfile] | None = Field(
         default_factory=dict,
     )

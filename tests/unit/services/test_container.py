@@ -199,3 +199,74 @@ class TestContainerServiceHealth:
         svc.start()
 
         assert cache.get_services()[0].status == ServiceStatus.AVAILABLE
+
+
+class TestContainerServiceEffectiveFields:
+    """Tests for merging configuration fields in ContainerService."""
+
+    def test_resolve_effective_fields_footprint_merge(self, monkeypatch):
+        """Verify that footprint settings are correctly merged with precedence:
+        Variety > Profile > Base.
+        """
+        from orchestration.models import (
+            FootprintConfig,
+            ServiceDefinition,
+            ServiceDefinitionProfile,
+            ServiceDefinitionVariety,
+            ServiceInformation,
+        )
+
+        # Base defines both
+        base_fp = FootprintConfig(**{"run-time": 30, "run-script": "base.sh"})
+        # Profile overrides run-time
+        prof_fp = FootprintConfig(**{"run-time": 60})
+        # Variety overrides run-script
+        var_fp = FootprintConfig(**{"run-script": "var.sh"})
+
+        prof = ServiceDefinitionProfile(name="p1", footprint=prof_fp)
+        var = ServiceDefinitionVariety(image="img", footprint=var_fp)
+
+        svc_def = ServiceDefinition(
+            service_name="svc",
+            type="container",
+            footprint=base_fp,
+            profiles={"p1": prof},
+            varieties={"v1": var},
+        )
+
+        # Setup minimal environment for ContainerService initialization
+        monkeypatch.setenv("OZWALD_HOST", "localhost")
+
+        # Mock SystemProvisioner to avoid actual cache/singleton access
+        class DummyCache:
+            parameters = {}
+
+        class DummyProv:
+            @staticmethod
+            def singleton():
+                class S:
+                    def get_cache(self):
+                        return DummyCache()
+
+                return S()
+
+        import orchestration.provisioner as prov_mod
+
+        monkeypatch.setattr(prov_mod, "SystemProvisioner", DummyProv)
+
+        si = ServiceInformation(
+            name="inst",
+            service="svc",
+            profile="p1",
+            variety="v1",
+        )
+        cs = ContainerService(si)
+
+        effective = cs._resolve_effective_fields(svc_def, "p1", "v1")
+
+        fp = effective.get("footprint")
+        assert fp is not None
+        # Variety overrides Profile/Base for run-script
+        assert fp.run_script == "var.sh"
+        # Profile overrides Base for run-time
+        assert fp.run_time == 60
