@@ -418,6 +418,10 @@ class SystemProvisioner:
                 f"starting service: {svc_info.name}",
             )
             service_instance.start()
+            # If start() returns without error, we consider it AVAILABLE
+            svc_info.status = ServiceStatus.AVAILABLE
+            svc_info.info["start_completed"] = datetime.now().isoformat()
+            updated = True
         except Exception as e:
             logger.error(
                 ("Error starting service '%s': %s(%s)"),
@@ -426,11 +430,6 @@ class SystemProvisioner:
                 e,
             )
             # Do not set completed on failure
-        # else:
-        #     # Mark start completed immediately after
-        #     # initiating start
-        #     svc_info.info["start_completed"] = datetime.now().isoformat()
-        #     updated = True
 
         return updated
 
@@ -544,7 +543,7 @@ class SystemProvisioner:
             time.sleep(BACKEND_DAEMON_SLEEP_TIME)
             return
 
-        updated = False
+        any_updated = False
         now = datetime.now()
 
         for idx, svc_info in enumerate(active_services):
@@ -579,12 +578,14 @@ class SystemProvisioner:
                 )
 
                 # STARTING flow
-                if svc_info.status == ServiceStatus.STARTING:
-                    updated = self._start_service(svc_info, service_cls, now)
-
-                # STOPPING flow
-                elif svc_info.status == ServiceStatus.STOPPING:
-                    updated = self._stop_service(svc_info, service_cls, now)
+                if (
+                    svc_info.status == ServiceStatus.STARTING
+                    and self._start_service(svc_info, service_cls, now)
+                ) or (
+                    svc_info.status == ServiceStatus.STOPPING
+                    and self._stop_service(svc_info, service_cls, now)
+                ):
+                    any_updated = True
 
                 # Assign the possibly updated object back
                 active_services[idx] = svc_info
@@ -600,7 +601,7 @@ class SystemProvisioner:
                 )
 
         # Persist updates if any
-        if updated:
+        if any_updated:
             # Remove services that have completed stopping to avoid
             # lingering STOPPING entries and races with service-level
             # cache updates. A STOPPING service with a stop_completed
@@ -894,6 +895,7 @@ class SystemProvisioner:
 
         # Measure pre state
         pre = HostResources.inspect_host()
+        logger.info("pre-state resources: %s", pre)
 
         # Construct a unique service instance name
         inst_name = self._target_service_instance_name(target)
@@ -919,8 +921,19 @@ class SystemProvisioner:
         self._wait_for_start_completed(inst_name, timeout=60.0)
         logger.info(f"service {inst_name} started successfully")
 
+        # wait for configured run time
+        reader = self.config_reader
+        effective_service_def = reader.get_effective_service_definition(
+            target.service_name,
+            target.profile,
+            target.variety,
+        )
+        footprint_config = effective_service_def.footprint
+        time.sleep(footprint_config.run_time)
+
         # Measure post state
         post = HostResources.inspect_host()
+        logger.info("post-state resources: %s", post)
 
         # Compute deltas
         usage = {

@@ -6,6 +6,8 @@ import yaml
 
 from orchestration.models import (
     Cache,
+    EffectiveServiceDefinition,
+    FootprintConfig,
     Host,
     Provisioner,
     Resource,
@@ -211,6 +213,12 @@ class ConfigReader:
             parent_entrypoint = service_data.get("entrypoint")
             parent_env_file = service_data.get("env_file", []) or []
             parent_image = service_data.get("image", "") or ""
+            parent_footprint_data = service_data.get("footprint")
+            parent_footprint = (
+                FootprintConfig(**parent_footprint_data)
+                if parent_footprint_data
+                else None
+            )
 
             # Parse profiles (support both dict-of-dicts and list-of-dicts)
             profiles: List[ServiceDefinitionProfile] = []
@@ -227,35 +235,36 @@ class ConfigReader:
                 if not name:
                     # Skip malformed profile without a name
                     continue
-                # Merge with parent defaults, letting profile override
-                env = {}
-                env.update(parent_env)
-                env.update(profile_data.get("environment", {}) or {})
-                depends_on = list(parent_depends_on)
-                if profile_data.get("depends_on"):
-                    depends_on = profile_data.get("depends_on")
-                env_file = list(parent_env_file)
-                if profile_data.get("env_file"):
-                    env_file = profile_data.get("env_file")
+
+                env = profile_data.get("environment", {}) or {}
+                depends_on = profile_data.get("depends_on", []) or []
+                env_file = profile_data.get("env_file", []) or []
+
                 # Normalize profile-specific volumes (no implicit inherit);
                 # merging happens at runtime by target precedence.
                 prof_vols = self._normalize_service_volumes(
                     profile_data.get("volumes", []),
                 )
 
+                # footprint
+                profile_footprint_data = profile_data.get("footprint")
+                profile_footprint = (
+                    FootprintConfig(**profile_footprint_data)
+                    if profile_footprint_data
+                    else None
+                )
+
                 profile = ServiceDefinitionProfile(
                     name=name,
                     description=profile_data.get("description"),
-                    image=profile_data.get("image", parent_image) or None,
+                    image=profile_data.get("image"),
                     depends_on=depends_on,
-                    command=profile_data.get("command", parent_command),
-                    entrypoint=profile_data.get(
-                        "entrypoint",
-                        parent_entrypoint,
-                    ),
+                    command=profile_data.get("command"),
+                    entrypoint=profile_data.get("entrypoint"),
                     env_file=env_file,
                     environment=env,
                     volumes=prof_vols,
+                    footprint=profile_footprint,
                 )
                 profiles.append(profile)
 
@@ -268,21 +277,21 @@ class ConfigReader:
                 v_vols = self._normalize_service_volumes(
                     variety_data.get("volumes", []),
                 )
+                v_footprint_data = variety_data.get("footprint")
+                v_footprint = (
+                    FootprintConfig(**v_footprint_data)
+                    if v_footprint_data
+                    else None
+                )
                 v = ServiceDefinitionVariety(
-                    image=variety_data.get("image", parent_image)
-                    or parent_image
-                    or "",
-                    depends_on=variety_data.get("depends_on", [])
-                    or parent_depends_on,
-                    command=variety_data.get("command", parent_command),
-                    entrypoint=variety_data.get(
-                        "entrypoint",
-                        parent_entrypoint,
-                    ),
-                    env_file=variety_data.get("env_file", [])
-                    or parent_env_file,
-                    environment=variety_data.get("environment", {}),
+                    image=variety_data.get("image"),
+                    depends_on=variety_data.get("depends_on"),
+                    command=variety_data.get("command"),
+                    entrypoint=variety_data.get("entrypoint"),
+                    env_file=variety_data.get("env_file"),
+                    environment=variety_data.get("environment"),
                     volumes=v_vols,
+                    footprint=v_footprint,
                 )
                 varieties[variety_name] = v
                 if default_image_from_variety is None and v.image:
@@ -311,6 +320,7 @@ class ConfigReader:
                 env_file=parent_env_file,
                 environment=parent_env,
                 volumes=svc_vols,
+                footprint=parent_footprint,
                 profiles=profiles_dict,
                 varieties=varieties,
             )
@@ -460,6 +470,121 @@ class ConfigReader:
                 result = service
         # logger.info("get_service_by_name %s -> %s", service_name, result)
         return result
+
+    def get_effective_service_definition(
+        self,
+        service: str | ServiceDefinition,
+        profile: str | None,
+        variety: str | None,
+    ) -> EffectiveServiceDefinition:
+        """Get the effective service definition by merging base, variety, and
+        profile fields.
+        """
+        if isinstance(service, str):
+            sd = self.get_service_by_name(service)
+            if not sd:
+                raise ValueError(f"Service definition not found: {service}")
+        else:
+            sd = service
+
+        base_env = sd.environment or {}
+        base_depends_on = sd.depends_on or []
+        base_command = sd.command
+        base_entrypoint = sd.entrypoint
+        base_env_file = sd.env_file
+        base_image = sd.image
+        base_vols = list(sd.volumes or [])
+
+        v = (sd.varieties or {}).get(variety) if variety else None
+        v_env = (v.environment if v else None) or {}
+        v_depends_on = (v.depends_on if v else None) or []
+        v_command = v.command if v else None
+        v_entrypoint = v.entrypoint if v else None
+        v_env_file = (v.env_file if v else None) or None
+        v_image = (v.image if v else None) or None
+        v_vols = list(getattr(v, "volumes", []) or [])
+
+        p = (sd.profiles or {}).get(profile) if profile else None
+        p_env = (p.environment if p else None) or {}
+        p_depends_on = (p.depends_on if p else None) or []
+        p_command = p.command if p else None
+        p_entrypoint = p.entrypoint if p else None
+        p_env_file = (p.env_file if p else None) or None
+        p_image = (p.image if p else None) or None
+        p_vols = list(getattr(p, "volumes", []) or [])
+
+        merged_env = {**base_env, **v_env, **p_env}
+
+        def _target_of(vol_spec: str) -> str:
+            try:
+                _host, rest = vol_spec.split(":", 1)
+                target = rest.split(":", 1)[0]
+                return target
+            except Exception:
+                return ""
+
+        def _merge_volumes(
+            base_list: list[str],
+            var_list: list[str],
+            prof_list: list[str],
+        ) -> list[str]:
+            order: list[str] = []
+            by_target: dict[str, str] = {}
+
+            def add_many(lst: list[str]):
+                for spec in lst:
+                    t = _target_of(spec)
+                    if not t:
+                        continue
+                    if t not in by_target:
+                        order.append(t)
+                    by_target[t] = spec
+
+            add_many(base_list)
+            add_many(var_list)
+            add_many(prof_list)
+            return [by_target[t] for t in order]
+
+        merged_vols = _merge_volumes(base_vols, v_vols, p_vols)
+
+        def _merge_footprint(base, var, prof) -> FootprintConfig | None:
+            res_dict = {}
+            for config in [base, var, prof]:
+                if config:
+                    res_dict.update(
+                        config.model_dump(by_alias=True, exclude_none=True),
+                    )
+            return FootprintConfig(**res_dict) if res_dict else None
+
+        merged_footprint = _merge_footprint(
+            sd.footprint,
+            v.footprint if v else None,
+            p.footprint if p else None,
+        )
+
+        def choose(*vals):
+            for val in vals:
+                if isinstance(val, str):
+                    if val.strip():
+                        return val
+                elif isinstance(val, (list, tuple)):
+                    if len(val) > 0:
+                        return list(val)
+                elif val is not None:
+                    return val
+            return None
+
+        return EffectiveServiceDefinition(
+            image=choose(p_image, v_image, base_image) or "",
+            environment=merged_env,
+            depends_on=choose(p_depends_on, v_depends_on, base_depends_on)
+            or [],
+            command=choose(p_command, v_command, base_command),
+            entrypoint=choose(p_entrypoint, v_entrypoint, base_entrypoint),
+            env_file=choose(p_env_file, v_env_file, base_env_file) or [],
+            volumes=merged_vols,
+            footprint=merged_footprint,
+        )
 
     # No action/mode lookups in simplified schema.
 

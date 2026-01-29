@@ -3,13 +3,15 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
-from datetime import datetime
 from typing import Any, ClassVar
 
 from hosts.resources import HostResources
-from orchestration.models import ServiceInformation, ServiceStatus
+from orchestration.models import (
+    EffectiveServiceDefinition,
+    ServiceInformation,
+)
+from orchestration.provisioner import SystemProvisioner
 from orchestration.service import BaseProvisionableService
-from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.logger import get_logger
 from util.runner_logs_cache import RunnerLogsCache
 
@@ -54,608 +56,273 @@ class ContainerService(BaseProvisionableService):
     def get_variety(self) -> str | None:
         return getattr(self._service_info, "variety", None)
 
+    @property
+    def effective_definition(self) -> EffectiveServiceDefinition:
+        if not hasattr(self, "_effective_def") or self._effective_def is None:
+            from config.reader import SystemConfigReader
+
+            reader = SystemConfigReader.singleton()
+            si = self.get_service_information()
+            self._effective_def = reader.get_effective_service_definition(
+                si.service,
+                si.profile,
+                si.variety,
+            )
+        return self._effective_def
+
     # --- Lifecycle: start/stop container ---
     def start(self):
         """Start the service container."""
-        active_services_cache = ActiveServicesCache(self._cache)
+        # Get the container image
+        image = self.get_container_image()
+        if not image:
+            logger.error(
+                "No container image specified for service"
+                f" {self._service_info.name}",
+            )
+            return
 
-        # Get current active services from cache
-        active_services = active_services_cache.get_services()
+        container_name = self.get_container_name()
 
-        # Find the service in the active services list
-        current_service = None
-        for service in active_services:
-            if (
-                service.name == self._service_info.name
-                and service.service == self._service_info.service
-                and service.profile == self._service_info.profile
-            ):
-                current_service = service
-                break
-
-        # Raise error if service is not found in active services
-        if current_service is None:
-            raise RuntimeError(
-                f"Service {self._service_info.name} not found in"
-                " active services",
+        # Remove any stale container with the same name to avoid
+        # name conflicts on repeated start attempts
+        try:
+            subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as e:
+            # log as info with exception type and msg
+            logger.info(
+                f"Error removing stale container: {type(e).__name__}({e})"
             )
 
-        # Raise error if service status is not set to starting
-        if current_service.status != ServiceStatus.STARTING:
-            raise RuntimeError(
-                f"Service {self._service_info.name} status is "
-                f"{current_service.status}, expected"
-                f" {ServiceStatus.STARTING}",
-            )
+        # compute the container start command
+        cmd = self.get_container_start_command(image)
 
-        # Record start initiation time and persist to cache before
-        # starting container
-        # Note: SystemProvisioner also sets start_initiated, but we do it
-        # here as well to ensure it is set even if started manually.
-        # However, we should be careful about race conditions.
-        # updated_services = []
-        # for service in active_services:
-        #     if (
-        #         service.name == self._service_info.name
-        #         and service.service == self._service_info.service
-        #         and service.profile == self._service_info.profile
-        #     ):
-        #         if service.info is None:
-        #             service.info = {}
-        #         service.info["start_initiated"] = datetime.now().isoformat()
-        #     updated_services.append(service)
+        logger.info(
+            "Starting container for service "
+            f"{self._service_info.name} with command: "
+            f'"{" ".join(cmd)}"',
+        )
 
-        # Save updated services to cache with retry to tolerate locking
-        # self._set_services_with_retry(active_services_cache, updated_services)
+        # start the container in foreground using Popen
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
 
-        # Start the container in a separate thread
-        def start_container():
+        # Real-time Log Streaming to Redis
+        def log_reader():
             try:
-                # Get the container image
-                image = self.get_container_image()
-                if not image:
+                provisioner = SystemProvisioner.singleton()
+                runner_logs_cache = RunnerLogsCache(provisioner.get_cache())
+                for line in process.stdout:
+                    if line:
+                        logger.info(f"Container {container_name}: {line}")
+                        runner_logs_cache.add_log_line(
+                            container_name,
+                            line.strip(),
+                        )
+            except Exception as e:
+                logger.error(f"Error in log_reader for {container_name}: {e}")
+            finally:
+                if process.stdout:
+                    process.stdout.close()
+
+        log_thread = threading.Thread(target=log_reader, daemon=True)
+        log_thread.start()
+
+        # Give it a moment to actually start or fail
+        time.sleep(1)
+        if process.poll() is not None:
+            logger.error(
+                f"Container process for {container_name} exited "
+                f"immediately with code {process.returncode}"
+            )
+            return
+
+        # Explicitly fetch the container_id
+        container_id = None
+        for _ in range(10):
+            id_result = subprocess.run(
+                [
+                    "docker",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    container_name,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if id_result.returncode == 0:
+                container_id = id_result.stdout.strip()
+                break
+            time.sleep(0.5)
+
+        if not container_id:
+            logger.error(f"Failed to fetch container ID for {container_name}")
+
+        # Wait for container to be running and healthy (if it has a
+        # healthcheck)
+        max_wait_time = CONTAINER_HEALTHCHECK_TIMEOUT  # seconds
+        wait_interval = 1  # seconds
+        elapsed_time = 0
+
+        logger.info(
+            f"elapsed time: {elapsed_time}, "
+            f"max wait time: {max_wait_time}, "
+            f"wait interval: {wait_interval}"
+        )
+
+        while elapsed_time < max_wait_time:
+            # Check if container is running and its health status
+            # Using container_name instead of container_id per plan
+            check_cmd = [
+                "docker",
+                "inspect",
+                (
+                    "--format={{.State.Status}} {{.State.Running}} "
+                    "{{if .State.Health}}{{.State.Health.Status}}"
+                    "{{else}}none{{end}}"
+                ),
+                container_name,
+            ]
+            check_result = subprocess.run(
+                check_cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            if check_result.returncode == 0:
+                output = check_result.stdout.strip()
+                parts = output.split()
+                status = ""
+                running = ""
+                health = "none"
+
+                if len(parts) == 3:
+                    status, running, health = parts
+                elif len(parts) == 2:
+                    running, health = parts
+                elif len(parts) == 1:
+                    running = parts[0]
+
+                # Container is considered available if it's running
+                # and not in the 'starting' health state.
+                if running == "true" and health != "starting":
+                    logger.info(
+                        f"Container for service "
+                        f"{self._service_info.name} is now "
+                        f"{status} and {health}",
+                    )
+
+                    # Update local service info
+                    if self._service_info.info is None:
+                        self._service_info.info = {}
+                    if container_id:
+                        self._service_info.info["container_id"] = container_id
+                    self._service_info.info["container_status"] = status
+                    if health != "none":
+                        self._service_info.info["container_health"] = health
+                    return
+
+                if running != "true" and process.poll() is not None:
                     logger.error(
-                        "No container image specified for service"
-                        "f' {self._service_info.name}",
+                        f"Container for service "
+                        f"{self._service_info.name} stopped "
+                        "unexpectedly",
                     )
                     return
 
-                # Remove any stale container with the same name to avoid
-                # name conflicts on repeated start attempts
-                try:
-                    name = self.get_container_name()
-                    inspect = [
-                        "docker",
-                        "ps",
-                        "-a",
-                        "--filter",
-                        f"name=^{name}$",
-                        "--format",
-                        "{{.Names}}",
-                    ]
-                    check = subprocess.run(
-                        inspect,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    )
-                    exists = any(
-                        line.strip() == name
-                        for line in (check.stdout or "").splitlines()
-                    )
-                    if exists:
-                        subprocess.run(
-                            ["docker", "rm", "-f", name],
-                            check=False,
-                            capture_output=True,
-                            text=True,
-                        )
-                except Exception:
-                    # Best effort cleanup; continue regardless
-                    pass
+            time.sleep(wait_interval)
+            elapsed_time += wait_interval
+            logger.info(
+                f"elapsed time: {elapsed_time}, "
+                f"max wait time: {max_wait_time}, "
+                f"wait interval: {wait_interval}"
+            )
 
-                # compute the container start command
-                cmd = self.get_container_start_command(image)
-
-                logger.info(
-                    "Starting container for service "
-                    f"{self._service_info.name} with command: "
-                    f'"{" ".join(cmd)}"',
-                )
-
-                # start the container
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                container_id = result.stdout.strip()
-
-                # Start streaming logs to Redis for historical access
-                self._stream_logs_to_redis(container_id)
-
-                # Wait for container to be running and healthy (if it has a
-                # healthcheck)
-                max_wait_time = CONTAINER_HEALTHCHECK_TIMEOUT  # seconds
-                wait_interval = 1  # seconds
-                elapsed_time = 0
-
-                logger.info(
-                    f"elapsed time: {elapsed_time}, "
-                    f"max wait time: {max_wait_time}, "
-                    f"wait interval: {wait_interval}"
-                )
-
-                while elapsed_time < max_wait_time:
-                    # Check if container is running and its health status
-                    check_cmd = [
-                        "docker",
-                        "inspect",
-                        (
-                            "--format={{.State.Status}} {{.State.Running}} "
-                            "{{if .State.Health}}{{.State.Health.Status}}"
-                            "{{else}}none{{end}}"
-                        ),
-                        container_id,
-                    ]
-                    check_result = subprocess.run(
-                        check_cmd,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    )
-
-                    if check_result.returncode == 0:
-                        output = check_result.stdout.strip()
-                        parts = output.split()
-                        status = ""
-                        running = ""
-                        health = "none"
-
-                        if len(parts) == 3:
-                            status, running, health = parts
-                        elif len(parts) == 2:
-                            running, health = parts
-                        elif len(parts) == 1:
-                            running = parts[0]
-
-                        logger.info(
-                            f"Container status: {status}, {running}, {health}"
-                        )
-
-                        # Container is considered available if it's running
-                        # and not in the 'starting' health state.
-                        if running == "true" and health != "starting":
-                            logger.info(
-                                f"Container for service "
-                                f"{self._service_info.name} is now "
-                                f"{status} and {health}",
-                            )
-
-                            # Update service status in cache
-                            updated_services = []
-                            for service in active_services:
-                                if (
-                                    service.name == self._service_info.name
-                                    and service.service
-                                    == self._service_info.service
-                                    and service.profile
-                                    == self._service_info.profile
-                                ):
-                                    service.status = ServiceStatus.AVAILABLE
-                                    if service.info is None:
-                                        service.info = {}
-                                    service.info["container_id"] = container_id
-                                    service.info["container_status"] = status
-                                    if health != "none":
-                                        service.info["container_health"] = (
-                                            health
-                                        )
-                                    service.info["start_completed"] = (
-                                        datetime.now().isoformat()
-                                    )
-                                updated_services.append(service)
-
-                            self._set_services_with_retry(
-                                active_services_cache,
-                                updated_services,
-                            )
-                            return
-
-                        if running != "true":
-                            logger.error(
-                                f"Container for service "
-                                f"{self._service_info.name} stopped "
-                                "unexpectedly",
-                            )
-                            # Give a small delay for logs to flush in Docker
-                            time.sleep(1)
-                            self._capture_final_logs(container_id)
-                            return
-
-                    logger.info("Container not yet ready, waiting...")
-                    time.sleep(wait_interval)
-                    elapsed_time += wait_interval
-                    logger.info(
-                        f"elapsed time: {elapsed_time}, "
-                        f"max wait time: {max_wait_time}, "
-                        f"wait interval: {wait_interval}"
-                    )
-
-                # Start streaming logs to Redis for historical access
-                # self._stream_logs_to_redis(container_id)
-
-                logger.error(
-                    f"Container for service {self._service_info.name} did not"
-                    " start within the expected time",
-                )
-            except subprocess.CalledProcessError as e:
-                # self._stream_logs_to_redis(container_id)
-
-                logger.error(
-                    f"Failed to start container for service"
-                    f" {self._service_info.name}: {e}",
-                )
-            except Exception as e:
-                # self._stream_logs_to_redis(container_id)
-                logger.error(
-                    "Unexpected error starting service "
-                    f"{self._service_info.name}: {e}",
-                )
-
-        container_thread = threading.Thread(target=start_container, daemon=True)
-        container_thread.start()
+        logger.error(
+            f"Container for service {self._service_info.name} did not"
+            " start within the expected time"
+        )
 
     def stop(self):
         """Stop the service container."""
-        active_services_cache = ActiveServicesCache(self._cache)
-        active_services = active_services_cache.get_services()
+        # Determine container ID or name
+        container_identifier = None
+        if self._service_info.info and self._service_info.info.get(
+            "container_id",
+        ):
+            container_identifier = self._service_info.info["container_id"]
+        else:
+            container_identifier = self.get_container_name()
 
-        # Locate current service in cache
-        current_service = None
-        for service in active_services:
-            if (
-                service.name == self._service_info.name
-                and service.service == self._service_info.service
-                and service.profile == self._service_info.profile
-            ):
-                current_service = service
-                break
-
-        if current_service is None:
-            raise RuntimeError(
-                f"Service {self._service_info.name} not found in"
-                " active services",
-            )
-
-        if current_service.status != ServiceStatus.STOPPING:
-            raise RuntimeError(
-                f"Service {self._service_info.name} status is"
-                f" {current_service.status}, expected"
-                f" {ServiceStatus.STOPPING}",
-            )
-
-        def stop_container():
-            try:
-                # Determine container ID or name
-                container_identifier = None
-                if current_service.info and current_service.info.get(
-                    "container_id",
-                ):
-                    container_identifier = current_service.info["container_id"]
-                else:
-                    container_identifier = self.get_container_name()
-
-                self._stream_logs_to_redis(container_identifier)
-                # Give the streaming thread a moment to establish connection
-                # before we remove the container
-                time.sleep(2)
-
-                stop_cmd = ["docker", "rm", "-f", container_identifier]
-                result = subprocess.run(
-                    stop_cmd,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode == 0:
-                    logger.info(
-                        f"Container for service {self._service_info.name}"
-                        " stopped and removed successfully",
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to stop/remove container for service"
-                        f" {self._service_info.name}: {result.stderr}",
-                    )
-
-                # Update cache: remove or mark stopped
-                updated_services = []
-                for service in active_services:
-                    if (
-                        service.name == self._service_info.name
-                        and service.service == self._service_info.service
-                        and service.profile == self._service_info.profile
-                    ):
-                        # Remove service from cache on stop completion
-                        continue
-                    updated_services.append(service)
-
-                self._set_services_with_retry(
-                    active_services_cache,
-                    updated_services,
-                )
-            except Exception as e:
-                logger.error(
-                    "Unexpected error stopping service "
-                    f"{self._service_info.name}: {e}",
-                )
-
-        container_thread = threading.Thread(target=stop_container, daemon=True)
-        container_thread.start()
-
-    def _stream_logs_to_redis(self, container_id: str):
-        """Stream container logs to Redis in a background thread."""
-        container_name = self.get_container_name()
-        runner_logs_cache = RunnerLogsCache(self._cache)
-
-        def stream_thread():
-            # Use a Redis lock-like key to ensure only one streaming thread
-            # per container ID
-            lock_key = f"streaming_logs:{container_id}"
-            redis_client = runner_logs_cache._redis_client
-
-            # Try to acquire a "lock" for this container's logs to avoid
-            # duplicates if multiple threads/processes call this for the
-            # same container ID.
-            if not redis_client.set(lock_key, "1", nx=True, ex=3600):
-                logger.debug(
-                    f"Streaming thread for container {container_id} already "
-                    "initiated"
-                )
-                return
-
-            try:
-                # Use binary mode and larger buffer for robustness
-                process = subprocess.Popen(
-                    ["docker", "logs", "-f", container_id],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    bufsize=64 * 1024,
-                )
-                if process.stdout:
-                    # Read lines from binary stream and decode safely
-                    for line_bytes in iter(process.stdout.readline, b""):
-                        line = line_bytes.decode("utf-8", errors="replace")
-                        runner_logs_cache.add_log_line(
-                            container_name,
-                            line.rstrip(),
-                        )
-            except Exception as e:
-                logger.error(
-                    f"Error streaming logs for container {container_id}: {e}"
-                )
-
-        thread = threading.Thread(target=stream_thread, daemon=True)
-        thread.start()
-
-    def _capture_final_logs(self, container_id: str):
-        """Perform a final log capture for a container."""
-        container_name = self.get_container_name()
-        runner_logs_cache = RunnerLogsCache(self._cache)
         try:
-            logger.info(f"Capturing final logs for container {container_id}")
-            # docker logs without -f to get the full history
+            stop_cmd = ["docker", "rm", "-f", container_identifier]
             result = subprocess.run(
-                ["docker", "logs", container_id],
+                stop_cmd,
+                check=False,
                 capture_output=True,
                 text=True,
-                errors="replace",
-                check=False,
             )
-            if result.stdout:
-                # This might introduce some duplicates if the streaming
-                # thread was partially successful, but ensures we get
-                # everything if it failed.
-                lines = result.stdout.splitlines()
-                # To minimize duplicates, we could compare with what's
-                # already in Redis, but for now we just append.
-                # Actually, the user wants the FULL logs.
-                runner_logs_cache.add_log_lines(container_name, lines)
+
+            if result.returncode == 0:
+                logger.info(
+                    f"Container for service {self._service_info.name}"
+                    " stopped and removed successfully",
+                )
+            else:
+                logger.warning(
+                    f"Failed to stop/remove container for service"
+                    f" {self._service_info.name}: {result.stderr}",
+                )
         except Exception as e:
-            logger.error(f"Failed to capture final logs: {e}")
-
-    # --- Effective configuration helpers ---
-    def _resolve_effective_fields(
-        self,
-        service_def,
-        profile_name: str | None,
-        variety_name: str | None,
-    ) -> dict[str, Any]:
-        # Delegate to base get_service_definition but keep logic local
-        base_env = service_def.environment or {}
-        base_depends_on = service_def.depends_on or []
-        base_command = service_def.command
-        base_entrypoint = service_def.entrypoint
-        base_env_file = service_def.env_file
-        base_image = service_def.image
-        base_vols = list(service_def.volumes or [])
-
-        v = None
-        if variety_name:
-            try:
-                v = (service_def.varieties or {}).get(variety_name)
-            except Exception:
-                v = None
-
-        v_env = (v.environment if v else None) or {}
-        v_depends_on = (v.depends_on if v else None) or []
-        v_command = v.command if v else None
-        v_entrypoint = v.entrypoint if v else None
-        v_env_file = (v.env_file if v else None) or None
-        v_image = (v.image if v else None) or None
-        v_vols = list(getattr(v, "volumes", []) or [])
-
-        p = None
-        if profile_name:
-            try:
-                p = (service_def.profiles or {}).get(profile_name)
-            except Exception:
-                p = None
-
-        p_env = (p.environment if p else None) or {}
-        p_depends_on = (p.depends_on if p else None) or []
-        p_command = p.command if p else None
-        p_entrypoint = p.entrypoint if p else None
-        p_env_file = (p.env_file if p else None) or None
-        p_image = (p.image if p else None) or None
-        p_vols = list(getattr(p, "volumes", []) or [])
-
-        merged_env = {**base_env, **v_env, **p_env}
-
-        def _target_of(vol_spec: str) -> str:
-            try:
-                # vol_spec format examples:
-                #   /host:/ctr:ro
-                #   name:/ctr:rw
-                #   /host:/ctr (no mode)
-                _host, rest = vol_spec.split(":", 1)
-                target = rest.split(":", 1)[0]
-                return target
-            except Exception:
-                return ""
-
-        def _merge_volumes(
-            base_list: list[str],
-            var_list: list[str],
-            prof_list: list[str],
-        ) -> list[str]:
-            order: list[str] = []  # target order
-            by_target: dict[str, str] = {}
-
-            def add_many(lst: list[str]):
-                for spec in lst:
-                    t = _target_of(spec)
-                    if not t:
-                        continue
-                    if t in by_target:
-                        # replace, keep position
-                        by_target[t] = spec
-                    else:
-                        by_target[t] = spec
-                        order.append(t)
-
-            add_many(base_list)
-            add_many(v_vols)
-            add_many(prof_list)
-            return [by_target[t] for t in order]
-
-        merged_vols = _merge_volumes(base_vols, v_vols, p_vols)
-
-        def choose(*vals):
-            for val in vals:
-                if isinstance(val, str):
-                    if val.strip():
-                        return val
-                elif isinstance(val, (list, tuple)):
-                    if len(val) > 0:
-                        return list(val)
-                elif val is not None:
-                    return val
-            return None
-
-        effective = {
-            "environment": merged_env,
-            "depends_on": choose(p_depends_on, v_depends_on, base_depends_on)
-            or [],
-            "command": choose(p_command, v_command, base_command),
-            "entrypoint": choose(p_entrypoint, v_entrypoint, base_entrypoint),
-            "env_file": choose(p_env_file, v_env_file, base_env_file) or [],
-            "image": choose(p_image, v_image, base_image) or "",
-            "volumes": merged_vols,
-        }
-        return effective
-
-    def _get_effective_environment(
-        self,
-        service_info: ServiceInformation,
-    ) -> dict:
-        service_def = self.get_service_definition()
-        variety = self.get_variety()
-        resolved = self._resolve_effective_fields(
-            service_def,
-            service_info.profile,
-            variety,
-        )
-        return resolved.get("environment", {}) or {}
+            logger.error(
+                "Unexpected error stopping service "
+                f"{self._service_info.name}: {e}",
+            )
 
     # --- Container configuration accessors and options builders ---
     def get_container_image(self):
         if self.container_image:
             return self.container_image
         try:
-            service_info = self.get_service_information()
-            service_def = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                service_def,
-                service_info.profile,
-                service_info.variety,
-            )
-            return resolved.get("image") or ""
+            return self.effective_definition.image
         except Exception:
             return ""
 
     def get_effective_depends_on(self) -> list[str]:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("depends_on") or []
+            return self.effective_definition.depends_on
         except Exception:
             return []
 
     def get_effective_command(self) -> Any:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("command")
+            return self.effective_definition.command
         except Exception:
             return None
 
     def get_effective_entrypoint(self) -> Any:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("entrypoint")
+            return self.effective_definition.entrypoint
         except Exception:
             return None
 
     def get_effective_env_file(self) -> list[str]:
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("env_file") or []
+            return self.effective_definition.env_file
         except Exception:
             return []
 
@@ -663,7 +330,7 @@ class ContainerService(BaseProvisionableService):
         return f"service-{self._service_info.name}"
 
     def get_container_options__standard(self) -> list[str]:
-        return ["-d", "--name", self.get_container_name()]
+        return ["--name", self.get_container_name()]
 
     def get_container_options__gpu(self) -> list[str]:
         gpu_opts = []
@@ -733,9 +400,7 @@ class ContainerService(BaseProvisionableService):
         if self.container_environment is not None:
             return self.container_environment
         try:
-            return self._get_effective_environment(
-                self.get_service_information(),
-            )
+            return self.effective_definition.environment
         except Exception:
             return None
 
@@ -744,14 +409,7 @@ class ContainerService(BaseProvisionableService):
             return self.container_volumes
         # Resolve volumes with profile/variety-aware merge
         try:
-            si = self.get_service_information()
-            sd = self.get_service_definition()
-            resolved = self._resolve_effective_fields(
-                sd,
-                si.profile,
-                si.variety,
-            )
-            return resolved.get("volumes") or []
+            return self.effective_definition.volumes
         except Exception:
             return None
 
@@ -760,44 +418,3 @@ class ContainerService(BaseProvisionableService):
 
     def get_external_container_port(self) -> int | None:
         return self.container_port__external
-
-    # --- Cache helper used by lifecycle ---
-    def _set_services_with_retry(
-        self,
-        active_services_cache: ActiveServicesCache,
-        services,
-    ):
-        deadline = time.time() + 5.0
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                active_services_cache.set_services(services)
-                return True
-            except (WriteCollision, RuntimeError) as e:
-                msg = str(e)
-                if (
-                    isinstance(e, RuntimeError)
-                    and "Lock error" not in msg
-                    and "lock" not in msg.lower()
-                ):
-                    logger.error(
-                        "Non-lock runtime error while setting services: %s",
-                        msg,
-                    )
-                    raise
-                if time.time() >= deadline:
-                    logger.error(
-                        "Failed to update active services after %d attempts:"
-                        " %s",
-                        attempt,
-                        msg,
-                    )
-                    return False
-                time.sleep(0.5)
-            except Exception as e:
-                logger.error(
-                    "Unexpected error while setting services: %s",
-                    str(e),
-                )
-                raise

@@ -122,6 +122,71 @@ def footprint_services(
     return data
 
 
+def get_service_launch_logs(
+    *,
+    service_name: str,
+    port: int = 8000,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+    log_type: str = "container",
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Call the provisioner service launch logs endpoint."""
+    url = f"http://localhost:{port}/srv/services/launch-logs/{service_name}/"
+    params = {}
+    if profile:
+        params["profile"] = profile
+    if variety:
+        params["variety"] = variety
+    if top:
+        params["top"] = top
+    if last:
+        params["last"] = last
+
+    headers = _auth_headers(system_key)
+    resp = http_get(url, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError(
+            "Unexpected response format for get_service_launch_logs"
+        )
+    return data
+
+
+def get_service_logs(
+    *,
+    service_name: str,
+    port: int = 8000,
+    profile: str | None = None,
+    variety: str | None = None,
+    top: int | None = None,
+    last: int | None = None,
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Call the provisioner service logs endpoint."""
+    url = f"http://localhost:{port}/srv/services/logs/{service_name}/"
+    params = {}
+    if profile:
+        params["profile"] = profile
+    if variety:
+        params["variety"] = variety
+    if top:
+        params["top"] = top
+    if last:
+        params["last"] = last
+
+    headers = _auth_headers(system_key)
+    resp = http_get(url, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected response format for get_service_logs")
+    return data
+
+
 def get_footprint_logs(
     *,
     service_name: str,
