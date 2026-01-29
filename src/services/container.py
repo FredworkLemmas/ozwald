@@ -398,10 +398,10 @@ class ContainerService(BaseProvisionableService):
                 else:
                     container_identifier = self.get_container_name()
 
-                self._stream_logs_to_redis(container_identifier)
+                # self._stream_logs_to_redis(container_identifier)
                 # Give the streaming thread a moment to establish connection
                 # before we remove the container
-                time.sleep(2)
+                # time.sleep(2)
 
                 stop_cmd = ["docker", "rm", "-f", container_identifier]
                 result = subprocess.run(
