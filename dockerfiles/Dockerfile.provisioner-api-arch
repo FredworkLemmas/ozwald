@@ -1,5 +1,5 @@
 # Use latest Arch Linux
-FROM archlinux:latest
+FROM archlinux:base-20260104.0.477168
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

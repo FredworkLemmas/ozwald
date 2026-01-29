@@ -12,6 +12,7 @@ class RunnerLogsCache:
     TTL = 48 * 3600  # 48 hours in seconds
 
     def __init__(self, cache: Cache):
+        logger.info(f"Initializing Redis cache for runner logs: {cache}")
         self.cache = cache
         self._redis_client = self._initialize_redis_client()
 

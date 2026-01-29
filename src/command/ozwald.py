@@ -515,6 +515,68 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         return 2
 
 
+def action_get_service_launch_logs(
+    port: int,
+    service_name: str | None,
+    profile: str | None,
+    variety: str | None,
+    top: int | None,
+    last: int | None,
+) -> int:
+    if not service_name:
+        print("Error: service name is required for get_service_launch_logs")
+        return 2
+    try:
+        data = ucli.get_service_launch_logs(
+            port=port,
+            service_name=service_name,
+            profile=profile,
+            variety=variety,
+            top=top,
+            last=last,
+        )
+
+        lines = data.get("lines", [])
+        for line in lines:
+            print(line)
+
+        return 0
+    except Exception as e:
+        print(f"Error retrieving service launch logs: {type(e).__name__}({e})")
+        return 2
+
+
+def action_get_service_logs(
+    port: int,
+    service_name: str | None,
+    profile: str | None,
+    variety: str | None,
+    top: int | None,
+    last: int | None,
+) -> int:
+    if not service_name:
+        print("Error: service name is required for get_service_logs")
+        return 2
+    try:
+        data = ucli.get_service_logs(
+            port=port,
+            service_name=service_name,
+            profile=profile,
+            variety=variety,
+            top=top,
+            last=last,
+        )
+
+        lines = data.get("lines", [])
+        for line in lines:
+            print(line)
+
+        return 0
+    except Exception as e:
+        print(f"Error retrieving service logs: {type(e).__name__}({e})")
+        return 2
+
+
 def action_get_footprint_logs(
     port: int,
     service_name: str | None,
@@ -565,6 +627,8 @@ def build_parser() -> argparse.ArgumentParser:
             "update_services",
             "footprint_services",
             "get_footprint_logs",
+            "get_service_launch_logs",
+            "get_service_logs",
             "status",
         ],
     )
@@ -670,6 +734,8 @@ def main(argv: list[str] | None = None) -> int:
         "update_services",
         "footprint_services",
         "get_footprint_logs",
+        "get_service_launch_logs",
+        "get_service_logs",
     }
     if (
         args.action in api_actions
@@ -714,6 +780,24 @@ def main(argv: list[str] | None = None) -> int:
             args.top,
             args.last,
             args.log_type,
+        )
+    if args.action == "get_service_launch_logs":
+        return action_get_service_launch_logs(
+            port_for_api,
+            args.services_spec,
+            args.profile,
+            args.variety,
+            args.top,
+            args.last,
+        )
+    if args.action == "get_service_logs":
+        return action_get_service_logs(
+            port_for_api,
+            args.services_spec,
+            args.profile,
+            args.variety,
+            args.top,
+            args.last,
         )
     if args.action == "status":
         return action_status()

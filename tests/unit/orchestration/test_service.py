@@ -55,7 +55,7 @@ class DummyProvisioner:
         return self._cache
 
 
-class TestService(ContainerService):
+class FakeContainerServiceOrch(ContainerService):
     __test__ = False  # prevent pytest from treating this as a test container
     service_type = "test"
     container_image: str = "alpine:latest"
@@ -139,7 +139,7 @@ def _si(
 
 class TestBaseProvisionableServiceLifecycle:
     def test_start_raises_when_service_not_in_cache(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STARTING))
 
         # The FakeActiveServicesCache starts empty; expect RuntimeError
         with pytest.raises(RuntimeError) as ei:
@@ -147,7 +147,7 @@ class TestBaseProvisionableServiceLifecycle:
         assert "not found" in str(ei.value)
 
     def test_start_raises_when_status_not_starting(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.AVAILABLE))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.AVAILABLE))
 
         # Seed cache with AVAILABLE instead of STARTING
         cache = FakeActiveServicesCache(Cache(type="memory"))
@@ -168,7 +168,7 @@ class TestBaseProvisionableServiceLifecycle:
         self,
         monkeypatch,
     ):
-        svc = TestService(_si("svc1", ServiceStatus.STARTING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STARTING))
 
         # Pre-seed active services with STARTING entry
         cache = FakeActiveServicesCache(Cache(type="memory"))
@@ -187,9 +187,17 @@ class TestBaseProvisionableServiceLifecycle:
 
         def fake_run(cmd, capture_output=False, text=False, check=False):
             # Distinguish by first two args
+            cmd_str = " ".join(cmd)
+            if cmd[:3] == ["docker", "rm", "-f"]:
+                return CP(0)
             if cmd[:2] == ["docker", "run"]:
                 # return container id
                 return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".Id" in cmd_str:
+                return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".State.Status" in cmd_str:
+                # indicate running and healthy
+                return CP(0, stdout="running true healthy\n")
             if cmd[:2] == ["docker", "inspect"]:
                 # indicate running
                 return CP(0, stdout="true\n")
@@ -197,6 +205,21 @@ class TestBaseProvisionableServiceLifecycle:
 
         import services.container as cont_mod
 
+        # Mock Popen for the log streaming thread
+        class MockProcess:
+            def __init__(self):
+                from unittest.mock import MagicMock
+
+                self.stdout = MagicMock()
+                self.stdout.readline.return_value = ""
+                self.poll = lambda: None  # Simulate running
+                self.returncode = 0
+
+        monkeypatch.setattr(
+            cont_mod.subprocess,
+            "Popen",
+            lambda *a, **k: MockProcess(),
+        )
         monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
 
         # Act
@@ -213,14 +236,14 @@ class TestBaseProvisionableServiceLifecycle:
         assert s.info.get("start_completed") is not None
 
     def test_stop_raises_when_service_not_in_cache(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.STOPPING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STOPPING))
         # No services in cache -> error
         with pytest.raises(RuntimeError) as ei:
             svc.stop()
         assert "not found" in str(ei.value)
 
     def test_stop_raises_when_status_not_stopping(self, monkeypatch):
-        svc = TestService(_si("svc1", ServiceStatus.AVAILABLE))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.AVAILABLE))
 
         cache = FakeActiveServicesCache(Cache(type="memory"))
         cache._services = [_si("svc1", ServiceStatus.AVAILABLE)]
@@ -237,7 +260,7 @@ class TestBaseProvisionableServiceLifecycle:
         self,
         monkeypatch,
     ):
-        svc = TestService(_si("svc1", ServiceStatus.STOPPING))
+        svc = FakeContainerServiceOrch(_si("svc1", ServiceStatus.STOPPING))
 
         # Seed cache with one running service, including a container_id
         si = _si("svc1", ServiceStatus.STOPPING)
@@ -403,6 +426,7 @@ class TestEffectiveConfigResolution:
         # Fake SystemConfigReader.singleton() -> object with get_service_by_name
 
         from config import reader as reader_mod
+        from config.reader import ConfigReader
 
         class DummyReader:
             def __init__(self, svc_def):
@@ -410,6 +434,19 @@ class TestEffectiveConfigResolution:
 
             def get_service_by_name(self, name: str):
                 return self._svc
+
+            def get_effective_service_definition(
+                self,
+                service,
+                profile,
+                variety,
+            ):
+                return ConfigReader.get_effective_service_definition(
+                    self,
+                    service,
+                    profile,
+                    variety,
+                )
 
         svc_def = self._build_service_def()
         dummy = DummyReader(svc_def)

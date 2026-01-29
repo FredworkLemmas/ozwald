@@ -144,6 +144,11 @@ def test_daemon_start_flow_sets_timestamps_and_persists(
             # calling start()
             assert "start_initiated" in self.service_info.info
             start_called["count"] += 1
+            # Mark as completed and available so the loop persists it
+            self.service_info.status = ServiceStatus.AVAILABLE
+            self.service_info.info["start_completed"] = (
+                datetime.now().isoformat()
+            )
 
     # Stub the registry lookup to return our dummy
     lookup_args = {"seen": []}
