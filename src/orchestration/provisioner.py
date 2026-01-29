@@ -418,6 +418,10 @@ class SystemProvisioner:
                 f"starting service: {svc_info.name}",
             )
             service_instance.start()
+            # If start() returns without error, we consider it AVAILABLE
+            svc_info.status = ServiceStatus.AVAILABLE
+            svc_info.info["start_completed"] = datetime.now().isoformat()
+            updated = True
         except Exception as e:
             logger.error(
                 ("Error starting service '%s': %s(%s)"),
@@ -426,11 +430,6 @@ class SystemProvisioner:
                 e,
             )
             # Do not set completed on failure
-        # else:
-        #     # Mark start completed immediately after
-        #     # initiating start
-        #     svc_info.info["start_completed"] = datetime.now().isoformat()
-        #     updated = True
 
         return updated
 
@@ -544,7 +543,7 @@ class SystemProvisioner:
             time.sleep(BACKEND_DAEMON_SLEEP_TIME)
             return
 
-        updated = False
+        any_updated = False
         now = datetime.now()
 
         for idx, svc_info in enumerate(active_services):
@@ -579,12 +578,14 @@ class SystemProvisioner:
                 )
 
                 # STARTING flow
-                if svc_info.status == ServiceStatus.STARTING:
-                    updated = self._start_service(svc_info, service_cls, now)
-
-                # STOPPING flow
-                elif svc_info.status == ServiceStatus.STOPPING:
-                    updated = self._stop_service(svc_info, service_cls, now)
+                if (
+                    svc_info.status == ServiceStatus.STARTING
+                    and self._start_service(svc_info, service_cls, now)
+                ) or (
+                    svc_info.status == ServiceStatus.STOPPING
+                    and self._stop_service(svc_info, service_cls, now)
+                ):
+                    any_updated = True
 
                 # Assign the possibly updated object back
                 active_services[idx] = svc_info
@@ -600,7 +601,7 @@ class SystemProvisioner:
                 )
 
         # Persist updates if any
-        if updated:
+        if any_updated:
             # Remove services that have completed stopping to avoid
             # lingering STOPPING entries and races with service-level
             # cache updates. A STOPPING service with a stop_completed

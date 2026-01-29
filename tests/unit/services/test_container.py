@@ -84,9 +84,6 @@ class TestContainerServiceHealth:
     def patch_system(self, monkeypatch):
         import services.container as cont_mod
 
-        monkeypatch.setattr(
-            cont_mod, "ActiveServicesCache", FakeActiveServicesCache
-        )
         monkeypatch.setattr(cont_mod.threading, "Thread", SyncThread)
 
         class MockProcess:
@@ -118,12 +115,7 @@ class TestContainerServiceHealth:
     def test_start_waits_for_healthy(self, monkeypatch):
         svc = FakeContainerService(_si("svc1", ServiceStatus.STARTING))
 
-        cache = FakeActiveServicesCache(Cache(type="memory"))
-        cache._services = [_si("svc1", ServiceStatus.STARTING)]
-
         import services.container as cont_mod
-
-        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         class CP:
             def __init__(self, returncode=0, stdout="", stderr=""):
@@ -161,17 +153,14 @@ class TestContainerServiceHealth:
 
         # Should have called inspect at least 3 times if it waits for healthy
         assert len(inspect_calls) >= 3
-        assert cache.get_services()[0].status == ServiceStatus.AVAILABLE
+        si = svc.get_service_information()
+        assert si.info.get("container_status") == "running"
+        assert si.info.get("container_health") == "healthy"
 
     def test_start_running_no_healthcheck(self, monkeypatch):
         svc = FakeContainerService(_si("svc1", ServiceStatus.STARTING))
 
-        cache = FakeActiveServicesCache(Cache(type="memory"))
-        cache._services = [_si("svc1", ServiceStatus.STARTING)]
-
         import services.container as cont_mod
-
-        monkeypatch.setattr(cont_mod, "ActiveServicesCache", lambda c: cache)
 
         class CP:
             def __init__(self, returncode=0, stdout="", stderr=""):
@@ -199,7 +188,9 @@ class TestContainerServiceHealth:
 
         svc.start()
 
-        assert cache.get_services()[0].status == ServiceStatus.AVAILABLE
+        si = svc.get_service_information()
+        assert si.info.get("container_status") == "running"
+        assert "container_health" not in si.info
 
 
 class TestContainerServiceEffectiveFields:
