@@ -101,15 +101,19 @@ def provisioner_env(monkeypatch, tmp_path):
     class StubConfigReader:
         def __init__(self, type_value: str = "dummy-type"):
             self._type_value = type_value
+            self.services = []
 
         def get_service_by_name(self, name: str):
             return StubServiceDef(self._type_value)
 
-        # The daemon may read .services elsewhere in class; provide empty
-        # default
-        @property
-        def services(self):
-            return []
+        def get_effective_service_definition(self, service, profile, variety):
+            from orchestration.models import EffectiveServiceDefinition
+
+            return EffectiveServiceDefinition(
+                image="dummy-image",
+                properties={"resolved-prop": "val"},
+                environment={},
+            )
 
     cache = Cache(type="memory", parameters={})
     config_reader = StubConfigReader()
@@ -423,3 +427,18 @@ class TestRunBackendDaemonChecks:
         assert ok
         # Only the successful write is recorded
         assert len(fake_cache.set_calls) == 1
+
+
+class TestInitServiceProperties:
+    def test_init_service_attaches_properties(self, provisioner_env):
+        _, prov, _ = provisioner_env
+        si = _svc_info("inst1", ServiceStatus.STARTING, service_name="svc1")
+        # Ensure properties is empty initially
+        si.properties = {}
+
+        # Call _init_service
+        # (It uses get_effective_service_definition from our StubConfigReader)
+        initialized = prov._init_service(si)
+
+        assert initialized.properties == {"resolved-prop": "val"}
+        assert initialized.status == ServiceStatus.STARTING

@@ -208,6 +208,7 @@ class ConfigReader:
 
             # Parent (service-level) docker-compose-like fields
             parent_env = service_data.get("environment", {}) or {}
+            parent_properties = service_data.get("properties", {}) or {}
             parent_depends_on = service_data.get("depends_on", []) or []
             parent_command = service_data.get("command")
             parent_entrypoint = service_data.get("entrypoint")
@@ -237,6 +238,7 @@ class ConfigReader:
                     continue
 
                 env = profile_data.get("environment", {}) or {}
+                properties = profile_data.get("properties", {}) or {}
                 depends_on = profile_data.get("depends_on", []) or []
                 env_file = profile_data.get("env_file", []) or []
 
@@ -263,6 +265,7 @@ class ConfigReader:
                     entrypoint=profile_data.get("entrypoint"),
                     env_file=env_file,
                     environment=env,
+                    properties=properties,
                     volumes=prof_vols,
                     footprint=profile_footprint,
                 )
@@ -290,6 +293,7 @@ class ConfigReader:
                     entrypoint=variety_data.get("entrypoint"),
                     env_file=variety_data.get("env_file"),
                     environment=variety_data.get("environment"),
+                    properties=variety_data.get("properties"),
                     volumes=v_vols,
                     footprint=v_footprint,
                 )
@@ -319,6 +323,7 @@ class ConfigReader:
                 entrypoint=parent_entrypoint,
                 env_file=parent_env_file,
                 environment=parent_env,
+                properties=parent_properties,
                 volumes=svc_vols,
                 footprint=parent_footprint,
                 profiles=profiles_dict,
@@ -488,6 +493,7 @@ class ConfigReader:
             sd = service
 
         base_env = sd.environment or {}
+        base_props = sd.properties or {}
         base_depends_on = sd.depends_on or []
         base_command = sd.command
         base_entrypoint = sd.entrypoint
@@ -497,6 +503,7 @@ class ConfigReader:
 
         v = (sd.varieties or {}).get(variety) if variety else None
         v_env = (v.environment if v else None) or {}
+        v_props = (v.properties if v else None) or {}
         v_depends_on = (v.depends_on if v else None) or []
         v_command = v.command if v else None
         v_entrypoint = v.entrypoint if v else None
@@ -506,6 +513,7 @@ class ConfigReader:
 
         p = (sd.profiles or {}).get(profile) if profile else None
         p_env = (p.environment if p else None) or {}
+        p_props = (p.properties if p else None) or {}
         p_depends_on = (p.depends_on if p else None) or []
         p_command = p.command if p else None
         p_entrypoint = p.entrypoint if p else None
@@ -514,6 +522,7 @@ class ConfigReader:
         p_vols = list(getattr(p, "volumes", []) or [])
 
         merged_env = {**base_env, **v_env, **p_env}
+        merged_props = {**base_props, **v_props, **p_props}
 
         def _target_of(vol_spec: str) -> str:
             try:
@@ -577,6 +586,7 @@ class ConfigReader:
         return EffectiveServiceDefinition(
             image=choose(p_image, v_image, base_image) or "",
             environment=merged_env,
+            properties=merged_props,
             depends_on=choose(p_depends_on, v_depends_on, base_depends_on)
             or [],
             command=choose(p_command, v_command, base_command),

@@ -665,6 +665,41 @@ class TestEffectiveServiceDefinition:
         assert eff.environment["K3"] == "prof-v3"
         assert eff.environment["K4"] == "prof-v4"
 
+    def test_property_merging(self, tmp_path):
+        """Verify property merging precedence: Profile > Variety > Base."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "properties": {"P1": "base-p1", "P2": "base-p2"},
+                    "varieties": {
+                        "v1": {
+                            "properties": {"P2": "var-p2", "P3": "var-p3"},
+                        }
+                    },
+                    "profiles": {
+                        "p1": {
+                            "properties": {"P3": "prof-p3", "P4": "prof-p4"},
+                        }
+                    },
+                }
+            ]
+        }
+        cfg_path = tmp_path / "test_properties.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+
+        # properties: merged, Profile > Variety > Base
+        assert eff.properties["P1"] == "base-p1"
+        assert eff.properties["P2"] == "var-p2"
+        assert eff.properties["P3"] == "prof-p3"
+        assert eff.properties["P4"] == "prof-p4"
+
     def test_volume_merging(self, tmp_path):
         """Verify volume merging by target precedence."""
         cfg = {

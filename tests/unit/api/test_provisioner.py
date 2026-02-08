@@ -23,7 +23,6 @@ from hosts.resources import GPUResource, HostResources
 from orchestration.models import (
     Resource,
     ResourceType,
-    Service,
     ServiceDefinition,
     ServiceInformation,
     ServiceType,
@@ -158,13 +157,12 @@ class TestActiveServices:
         """`/srv/services/active/` returns the list from
         `provisioner.get_active_services()`.
         """
-        active: List[Service] = [
-            Service(
+        active: List[ServiceInformation] = [
+            ServiceInformation(
                 name="inst-1",
-                service_name="svc-a",
-                host="localhost",
-                parameters={},
+                service="svc-a",
                 profile=None,
+                properties={"p1": "v1"},
             ),
         ]
 
