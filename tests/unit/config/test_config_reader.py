@@ -4,6 +4,7 @@ import yaml
 from config.reader import ConfigReader
 from orchestration.models import (
     Host,
+    Network,
     Resource,
     ResourceType,
     ServiceDefinition,
@@ -189,6 +190,71 @@ class TestHostParsing:
         assert vram_1.type == ResourceType.VRAM
         assert vram_1.value == 8.0
         assert "gpu-1" in vram_1.related_resources
+
+
+# ============================================================================
+# Network Parsing Tests
+# ============================================================================
+
+
+class TestNetworkParsing:
+    """Tests for parsing network configurations."""
+
+    def test_networks_are_parsed(self, tmp_path):
+        """Verify that all networks from the configuration are parsed."""
+        cfg = {
+            "networks": [{"name": "layer1"}, {"name": "layer2"}],
+            "hosts": [],
+            "services": [],
+            "provisioners": [],
+        }
+        cfg_path = tmp_path / "test_networks.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        assert len(reader.networks) == 2
+        assert all(isinstance(n, Network) for n in reader.networks)
+        assert reader.networks[0].name == "layer1"
+        assert reader.networks[1].name == "layer2"
+
+    def test_service_networks_are_parsed(self, tmp_path):
+        """Verify that networks in service definitions are parsed."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc1",
+                    "type": "container",
+                    "networks": ["layer1", "layer2"],
+                    "profiles": {
+                        "p1": {"networks": ["layer3"]},
+                    },
+                    "varieties": {
+                        "v1": {"networks": ["layer4"]},
+                    },
+                },
+                {
+                    "name": "svc2",
+                    "type": "container",
+                    # No networks specified
+                },
+            ],
+        }
+        cfg_path = tmp_path / "test_svc_networks.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        svc1 = reader.get_service_by_name("svc1")
+        assert svc1.networks == ["layer1", "layer2"]
+        assert svc1.profiles["p1"].networks == ["layer3"]
+        assert svc1.varieties["v1"].networks == ["layer4"]
+
+        svc2 = reader.get_service_by_name("svc2")
+        # Should default to ["default"]
+        assert svc2.networks == ["default"]
 
 
 # ============================================================================
@@ -737,3 +803,37 @@ class TestEffectiveServiceDefinition:
             "/host6:/t4:ro",  # t4 from prof
         ]
         assert eff.volumes == expected
+
+    def test_network_merging(self, tmp_path):
+        """Verify network merging precedence: Profile > Variety > Base."""
+        cfg = {
+            "services": [
+                {
+                    "name": "svc",
+                    "type": "container",
+                    "networks": ["base-net"],
+                    "varieties": {"v1": {"networks": ["var-net"]}},
+                    "profiles": {"p1": {"networks": ["prof-net"]}},
+                    "profiles_no_override": {
+                        "p2": {"description": "no networks override"}
+                    },
+                }
+            ]
+        }
+        cfg_path = tmp_path / "test_net_merge.yml"
+        import yaml as _yaml
+
+        cfg_path.write_text(_yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        # Profile > Variety > Base
+        eff1 = reader.get_effective_service_definition("svc", "p1", "v1")
+        assert eff1.networks == ["prof-net"]
+
+        # Variety > Base
+        eff2 = reader.get_effective_service_definition("svc", None, "v1")
+        assert eff2.networks == ["var-net"]
+
+        # Base only
+        eff3 = reader.get_effective_service_definition("svc", None, None)
+        assert eff3.networks == ["base-net"]

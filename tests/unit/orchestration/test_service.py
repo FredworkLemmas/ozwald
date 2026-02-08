@@ -72,6 +72,15 @@ class FakeContainerServiceOrch(ContainerService):
     def get_container_image(self):
         return "alpine:latest"
 
+    @property
+    def effective_definition(self):
+        from orchestration.models import EffectiveServiceDefinition
+
+        return EffectiveServiceDefinition(
+            image=self.get_container_image(),
+            networks=["default"],
+        )
+
     def get_container_start_command(self, image: str) -> list[str]:
         # Minimal command that avoids accessing base class attributes
         return [
