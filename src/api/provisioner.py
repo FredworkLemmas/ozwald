@@ -21,7 +21,6 @@ from orchestration.models import (
     FootprintAction,
     FootprintLogLines,
     Resource,
-    Service,
     ServiceDefinition,
     ServiceInformation,
 )
@@ -110,7 +109,7 @@ async def get_configured_services(
 
 @app.get(
     "/srv/services/active/",
-    response_model=List[Service],
+    response_model=List[ServiceInformation],
     summary="Get active services",
     description=(
         "List all services which the provisioner has made (or is making) active"
@@ -118,7 +117,7 @@ async def get_configured_services(
 )
 async def get_active_services(
     authenticated: bool = Depends(verify_system_key),
-) -> list[Service]:
+) -> list[ServiceInformation]:
     """Returns all services that are currently active or being
     activated/deactivated.
     """

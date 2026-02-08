@@ -232,6 +232,12 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
                 for key, value in environment.items():
                     print(f"    {key}: {value}")
 
+            properties = service_data.get("properties") or {}
+            if properties:
+                print("\n  Properties:")
+                for key, value in properties.items():
+                    print(f"    {key}: {value}")
+
             # Profiles
             profiles = service_data.get("profiles", {})
             if profiles:
@@ -242,6 +248,12 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
                     p_env = profile.get("environment") or {}
                     if p_env:
                         for key, value in p_env.items():
+                            print(f"        {key}: {value}")
+                    p_properties = profile.get("properties") or {}
+                    if p_properties:
+                        if not p_env:
+                            print("        (Properties)")
+                        for key, value in p_properties.items():
                             print(f"        {key}: {value}")
 
             # Varieties
@@ -255,6 +267,12 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
                     v_env = v_data.get("environment") or {}
                     if v_env:
                         for key, value in v_env.items():
+                            print(f"        {key}: {value}")
+                    v_properties = v_data.get("properties") or {}
+                    if v_properties:
+                        if not v_env:
+                            print("        (Properties)")
+                        for key, value in v_properties.items():
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)
@@ -342,7 +360,12 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
         print("=" * 80)
 
         for i, service_data in enumerate(services_data, 1):
-            print(f"\n[{i}] Service: {service_data.get('service_name', 'N/A')}")
+            # ServiceInformation uses 'service', ServiceDefinition uses
+            # 'service_name'
+            svc_name = service_data.get("service") or service_data.get(
+                "service_name"
+            )
+            print(f"\n[{i}] Service: {svc_name or 'N/A'}")
             print("─" * 80)
 
             # Basic Information
@@ -374,6 +397,12 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
                 for key, value in environment.items():
                     print(f"    {key}: {value}")
 
+            properties = service_data.get("properties") or {}
+            if properties:
+                print("\n  Properties:")
+                for key, value in properties.items():
+                    print(f"    {key}: {value}")
+
             # Profiles
             profiles = service_data.get("profiles", {})
             if profiles:
@@ -384,6 +413,12 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
                     p_env = profile.get("environment") or {}
                     if p_env:
                         for key, value in p_env.items():
+                            print(f"        {key}: {value}")
+                    p_properties = profile.get("properties") or {}
+                    if p_properties:
+                        if not p_env:
+                            print("        (Properties)")
+                        for key, value in p_properties.items():
                             print(f"        {key}: {value}")
 
             # Varieties
@@ -397,6 +432,12 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
                     v_env = v_data.get("environment") or {}
                     if v_env:
                         for key, value in v_env.items():
+                            print(f"        {key}: {value}")
+                    v_properties = v_data.get("properties") or {}
+                    if v_properties:
+                        if not v_env:
+                            print("        (Properties)")
+                        for key, value in v_properties.items():
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)

@@ -103,6 +103,7 @@ class ServiceDefinitionProfile(BaseModel):
     # Normalized docker volume strings, e.g. "/host:/ctr:ro" or
     # "named_vol:/ctr:rw"
     volumes: list[str] = Field(default_factory=list)
+    properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
 
@@ -115,6 +116,7 @@ class ServiceDefinitionVariety(BaseModel):
     environment: dict[str, Any] | None = Field(default_factory=dict)
     # Normalized docker volume strings, same format as on the base service
     volumes: list[str] = Field(default_factory=list)
+    properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
 
@@ -135,6 +137,7 @@ class ServiceDefinition(BaseModel):
     # List of normalized volume mount strings ready for docker CLI, e.g.,
     # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
     volumes: list[str] | None = Field(default_factory=list)
+    properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
     profiles: dict[str, ServiceDefinitionProfile] | None = Field(
         default_factory=dict,
@@ -158,6 +161,7 @@ class EffectiveServiceDefinition(BaseModel):
     entrypoint: list[str] | str | None = None
     env_file: list[str] = Field(default_factory=list)
     volumes: list[str] = Field(default_factory=list)
+    properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
 
@@ -216,6 +220,7 @@ class ServiceInformation(BaseModel):
     variety: str | None = None
     profile: str | None = None
     status: ServiceStatus | None = None
+    properties: dict[str, Any] = Field(default_factory=dict)
     info: dict[str, Any] | None = {}  # None on request, dict on response
 
 

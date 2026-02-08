@@ -22,7 +22,6 @@ from .models import (
     ConfiguredServiceIdentifier,
     FootprintAction,
     Resource,
-    Service,
     ServiceDefinition,
     ServiceInformation,
     ServiceInstanceUsage,
@@ -113,7 +112,7 @@ class SystemProvisioner:
         """Get all services configured for this provisioner"""
         return self.config_reader.services
 
-    def get_active_services(self) -> List[Service]:
+    def get_active_services(self) -> List[ServiceInformation]:
         """Get all currently active services"""
         if self._active_services_cache:
             return self._active_services_cache.get_services()
@@ -1082,6 +1081,14 @@ class SystemProvisioner:
                 "Service definition '" + service_info.service + "' "
                 "not found in configuration",
             )
+
+        # resolve and attach properties
+        effective_def = self.config_reader.get_effective_service_definition(
+            service_def,
+            service_info.profile,
+            service_info.variety,
+        )
+        service_info.properties = effective_def.properties
 
         service_info.status = ServiceStatus.STARTING
         return service_info
