@@ -68,6 +68,15 @@ class FakeContainerService(ContainerService):
     def get_container_name(self):
         return f"service-{self._service_info.name}"
 
+    @property
+    def effective_definition(self):
+        from orchestration.models import EffectiveServiceDefinition
+
+        return EffectiveServiceDefinition(
+            image=self.get_container_image(),
+            networks=["default"],
+        )
+
     def get_container_start_command(self, image: str) -> list[str]:
         return [
             "docker",
@@ -191,6 +200,125 @@ class TestContainerServiceHealth:
         si = svc.get_service_information()
         assert si.info.get("container_status") == "running"
         assert "container_health" not in si.info
+
+
+class TestContainerServiceNetworks:
+    @pytest.fixture(autouse=True)
+    def patch_system(self, monkeypatch):
+        import services.container as cont_mod
+
+        monkeypatch.setattr(cont_mod.threading, "Thread", SyncThread)
+
+        class MockProcess:
+            def __init__(self):
+                from unittest.mock import MagicMock
+
+                self.stdout = MagicMock()
+                self.stdout.readline.return_value = ""
+                self.poll = lambda: None
+                self.returncode = 0
+
+        monkeypatch.setattr(
+            cont_mod.subprocess, "Popen", lambda *a, **k: MockProcess()
+        )
+
+        import orchestration.provisioner as prov_mod
+
+        dummy_cache = Cache(type="memory", parameters={})
+
+        def fake_singleton():
+            return DummyProvisioner(dummy_cache)
+
+        monkeypatch.setattr(
+            prov_mod.SystemProvisioner,
+            "singleton",
+            staticmethod(fake_singleton),
+        )
+
+    def test_start_with_multiple_networks(self, monkeypatch):
+        """Verify that docker run uses the first network and additional
+        networks are connected via docker network connect.
+        """
+        from orchestration.models import (
+            EffectiveServiceDefinition,
+            ServiceInformation,
+        )
+
+        monkeypatch.setenv("OZWALD_HOST", "localhost")
+
+        si = ServiceInformation(
+            name="svc1",
+            service="test",
+            status=ServiceStatus.STARTING,
+        )
+        cs = ContainerService(si)
+
+        # Mock effective definition with multiple networks
+        eff_def = EffectiveServiceDefinition(
+            image="test-image",
+            networks=["net1", "net2", "net3"],
+        )
+        monkeypatch.setattr(
+            ContainerService,
+            "effective_definition",
+            property(lambda self: eff_def),
+        )
+
+        import services.container as cont_mod
+
+        class CP:
+            def __init__(self, returncode=0, stdout="", stderr=""):
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+
+        run_calls = []
+
+        def fake_run(cmd, capture_output=False, text=False, check=False):
+            run_calls.append(cmd)
+            cmd_str = " ".join(cmd)
+            if cmd[:3] == ["docker", "rm", "-f"]:
+                return CP(0)
+            if "inspect" in cmd_str and ".Id" in cmd_str:
+                return CP(0, stdout="abc123\n")
+            if "inspect" in cmd_str and ".State.Status" in cmd_str:
+                return CP(0, stdout="running true healthy\n")
+            if cmd[:3] == ["docker", "network", "connect"]:
+                return CP(0)
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        monkeypatch.setattr(cont_mod.subprocess, "run", fake_run)
+        monkeypatch.setattr(time, "sleep", lambda x: None)
+
+        cs.start()
+
+        # Check docker run command (usually it's Popen, but we check what
+        # get_container_start_command returns via the log or by manually
+        # calling it)
+        start_cmd = cs.get_container_start_command("test-image")
+        assert "--network" in start_cmd
+        assert "net1" in start_cmd
+        assert start_cmd[start_cmd.index("--network") + 1] == "net1"
+
+        # Check docker network connect calls
+        connect_calls = [
+            c for c in run_calls if c[:3] == ["docker", "network", "connect"]
+        ]
+        assert len(connect_calls) == 2
+        assert connect_calls[0] == [
+            "docker",
+            "network",
+            "connect",
+            "net2",
+            "abc123",
+        ]
+        assert connect_calls[1] == [
+            "docker",
+            "network",
+            "connect",
+            "net3",
+            "abc123",
+        ]
 
 
 class TestContainerServiceEffectiveFields:

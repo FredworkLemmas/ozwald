@@ -27,6 +27,10 @@ class Resource(BaseModel):
     extended_attributes: dict[str, Any] | None
 
 
+class Network(BaseModel):
+    name: str
+
+
 # ============================================================================
 # Host Models
 # ============================================================================
@@ -103,6 +107,7 @@ class ServiceDefinitionProfile(BaseModel):
     # Normalized docker volume strings, e.g. "/host:/ctr:ro" or
     # "named_vol:/ctr:rw"
     volumes: list[str] = Field(default_factory=list)
+    networks: list[str] | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
@@ -116,6 +121,7 @@ class ServiceDefinitionVariety(BaseModel):
     environment: dict[str, Any] | None = Field(default_factory=dict)
     # Normalized docker volume strings, same format as on the base service
     volumes: list[str] = Field(default_factory=list)
+    networks: list[str] | None = None
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
@@ -137,6 +143,7 @@ class ServiceDefinition(BaseModel):
     # List of normalized volume mount strings ready for docker CLI, e.g.,
     # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
     volumes: list[str] | None = Field(default_factory=list)
+    networks: list[str] = Field(default_factory=list)
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
     profiles: dict[str, ServiceDefinitionProfile] | None = Field(
@@ -161,6 +168,7 @@ class EffectiveServiceDefinition(BaseModel):
     entrypoint: list[str] | str | None = None
     env_file: list[str] = Field(default_factory=list)
     volumes: list[str] = Field(default_factory=list)
+    networks: list[str] = Field(default_factory=list)
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
@@ -260,6 +268,7 @@ class OzwaldConfig(BaseModel):
     hosts: list[Host] = Field(default_factory=list)
     services: list[ServiceDefinition] = Field(default_factory=list)
     provisioners: list[Provisioner] = Field(default_factory=list)
+    networks: list[Network] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
     volumes: dict[str, dict[str, Any]] = Field(default_factory=dict)
 

@@ -234,6 +234,24 @@ class ContainerService(BaseProvisionableService):
                     self._service_info.info["container_status"] = status
                     if health != "none":
                         self._service_info.info["container_health"] = health
+
+                    # Connect to additional networks if defined
+                    networks = self.effective_definition.networks
+                    if len(networks) > 1:
+                        target_id = container_id or container_name
+                        for network in networks[1:]:
+                            connect_cmd = [
+                                "docker",
+                                "network",
+                                "connect",
+                                network,
+                                target_id,
+                            ]
+                            logger.info(
+                                f"Connecting container {target_id} to "
+                                f"network {network}",
+                            )
+                            subprocess.run(connect_cmd, check=True)
                     return
 
                 if running != "true" and process.poll() is not None:
@@ -376,11 +394,18 @@ class ContainerService(BaseProvisionableService):
                 env_opts.extend(["-e", f"{key}={value}"])
         return env_opts
 
+    def get_container_options__network(self) -> list[str]:
+        networks = self.effective_definition.networks
+        if networks:
+            return ["--network", networks[0]]
+        return []
+
     def get_container_start_command(self, image: str) -> list[str]:
         docker_cmd = ["docker", "run"]
         std_opts = self.get_container_options__standard()
         gpu_opts = self.get_container_options__gpu()
         port_opts = self.get_container_options__port()
+        net_opts = self.get_container_options__network()
         env_opts = self.get_container_options__environment()
         vol_opts = self.get_container_options__volume()
         cmd = (
@@ -388,6 +413,7 @@ class ContainerService(BaseProvisionableService):
             + std_opts
             + gpu_opts
             + port_opts
+            + net_opts
             + env_opts
             + vol_opts
             + [f"ozwald-{image}"]

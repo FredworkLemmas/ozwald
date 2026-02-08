@@ -9,6 +9,7 @@ from orchestration.models import (
     EffectiveServiceDefinition,
     FootprintConfig,
     Host,
+    Network,
     Provisioner,
     Resource,
     ServiceDefinition,
@@ -40,6 +41,7 @@ class ConfigReader:
         self.hosts: List[Host] = []
         self.services: List[ServiceDefinition] = []
         self.provisioners: List[Provisioner] = []
+        self.networks: List[Network] = []
         # Top-level named volumes (normalized)
         self.volumes: Dict[str, Dict[str, Any]] = {}
 
@@ -65,6 +67,7 @@ class ConfigReader:
     def _parse_config(self) -> None:
         """Parse raw configuration and hydrate models."""
         self._parse_hosts()
+        self._parse_networks()
         self._parse_volumes()
         self._parse_services()
         self._parse_provisioners()
@@ -190,6 +193,15 @@ class ConfigReader:
             )
             self.hosts.append(host)
 
+    def _parse_networks(self) -> None:
+        """Parse networks section and create Network models."""
+        networks_data = self._raw_config.get("networks", [])
+        for i, network_data in enumerate(networks_data):
+            if "name" not in network_data:
+                raise KeyError(f"Network entry at index {i} is missing 'name'")
+            network = Network(name=network_data["name"])
+            self.networks.append(network)
+
     def _parse_services(self) -> None:
         """Parse services section and create ServiceDefinition models.
 
@@ -214,6 +226,7 @@ class ConfigReader:
             parent_entrypoint = service_data.get("entrypoint")
             parent_env_file = service_data.get("env_file", []) or []
             parent_image = service_data.get("image", "") or ""
+            parent_networks = service_data.get("networks", []) or ["default"]
             parent_footprint_data = service_data.get("footprint")
             parent_footprint = (
                 FootprintConfig(**parent_footprint_data)
@@ -241,6 +254,7 @@ class ConfigReader:
                 properties = profile_data.get("properties", {}) or {}
                 depends_on = profile_data.get("depends_on", []) or []
                 env_file = profile_data.get("env_file", []) or []
+                networks = profile_data.get("networks")
 
                 # Normalize profile-specific volumes (no implicit inherit);
                 # merging happens at runtime by target precedence.
@@ -267,6 +281,7 @@ class ConfigReader:
                     environment=env,
                     properties=properties,
                     volumes=prof_vols,
+                    networks=networks,
                     footprint=profile_footprint,
                 )
                 profiles.append(profile)
@@ -295,6 +310,7 @@ class ConfigReader:
                     environment=variety_data.get("environment"),
                     properties=variety_data.get("properties"),
                     volumes=v_vols,
+                    networks=variety_data.get("networks"),
                     footprint=v_footprint,
                 )
                 varieties[variety_name] = v
@@ -325,6 +341,7 @@ class ConfigReader:
                 environment=parent_env,
                 properties=parent_properties,
                 volumes=svc_vols,
+                networks=parent_networks,
                 footprint=parent_footprint,
                 profiles=profiles_dict,
                 varieties=varieties,
@@ -500,6 +517,7 @@ class ConfigReader:
         base_env_file = sd.env_file
         base_image = sd.image
         base_vols = list(sd.volumes or [])
+        base_networks = sd.networks or []
 
         v = (sd.varieties or {}).get(variety) if variety else None
         v_env = (v.environment if v else None) or {}
@@ -510,6 +528,7 @@ class ConfigReader:
         v_env_file = (v.env_file if v else None) or None
         v_image = (v.image if v else None) or None
         v_vols = list(getattr(v, "volumes", []) or [])
+        v_networks = list(getattr(v, "networks", []) or [])
 
         p = (sd.profiles or {}).get(profile) if profile else None
         p_env = (p.environment if p else None) or {}
@@ -520,6 +539,7 @@ class ConfigReader:
         p_env_file = (p.env_file if p else None) or None
         p_image = (p.image if p else None) or None
         p_vols = list(getattr(p, "volumes", []) or [])
+        p_networks = list(getattr(p, "networks", []) or [])
 
         merged_env = {**base_env, **v_env, **p_env}
         merged_props = {**base_props, **v_props, **p_props}
@@ -593,6 +613,8 @@ class ConfigReader:
             entrypoint=choose(p_entrypoint, v_entrypoint, base_entrypoint),
             env_file=choose(p_env_file, v_env_file, base_env_file) or [],
             volumes=merged_vols,
+            networks=choose(p_networks, v_networks, base_networks)
+            or ["default"],
             footprint=merged_footprint,
         )
 
