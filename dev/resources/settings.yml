@@ -38,7 +38,7 @@ provisioners:
         port: 6479
         db: 0
 
-services:
+service-definitions:
   - name: simple_test_1
     type: container
     description: Simple test service

@@ -2,8 +2,10 @@
 
 These tests validate that `ActiveServicesCache`:
 - initializes a Redis client with expected parameters,
-- stores services atomically using a lock and handles lock contention/errors,
-- and retrieves services as `ServiceInformation` objects from cached JSON.
+- stores service_definitions atomically using a lock and handles lock\
+  contention/errors,
+- and retrieves service_definitions as `ServiceInformation` objects from cached
+  JSON.
 
 The tests use pytest fixtures and the `mocker` fixture (no `patch` decorator).
 """
@@ -114,8 +116,8 @@ class TestSetServices:
         active_cache_default: ActiveServicesCache,
         redis_mock,
     ):
-        """When the lock is acquired, services are JSON-encoded and stored,
-        and the lock is released.
+        """When the lock is acquired, service_definitions are JSON-encoded and
+        stored, and the lock is released.
         """
         redis_client = redis_mock.return_value
         lock = redis_client.lock.return_value

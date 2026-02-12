@@ -82,11 +82,13 @@ def _auth_headers() -> dict:
 
 
 def _pick_a_service_from_settings() -> tuple[str, str]:
-    """Return (service_name, profile_name) from settings services list."""
+    """
+    Return (service_name, profile_name) from settings service_definitions list.
+    """
     cfg = _load_settings()
-    services = cfg.get("services") or []
+    services = cfg.get("service-definitions") or []
     if not services:
-        raise RuntimeError("No services configured in settings file")
+        raise RuntimeError("No service-definitions configured in settings file")
     svc = services[0]
     service_name = svc["name"]
     profiles = svc.get("profiles") or []
@@ -97,7 +99,7 @@ def _pick_a_service_from_settings() -> tuple[str, str]:
 def test_update_services_persists_to_redis():
     """POST to update endpoint should store expected payload.
 
-    A POST to the active services update endpoint should update the
+    A POST to the active service_definitions update endpoint should update the
     active_services key in Redis.
     """
     service_name, profile_name = _pick_a_service_from_settings()
@@ -143,7 +145,7 @@ def test_update_services_persists_to_redis():
 def test_update_services_rejects_invalid_payload_shape():
     """Sending a non-list payload should yield a 422 from FastAPI validation.
 
-    A POST to the active services update endpoint should return a 422
+    A POST to the active service_definitions update endpoint should return a 422
     if the payload is not a list.
     """
     resp = requests.post(
@@ -158,7 +160,7 @@ def test_update_services_rejects_invalid_payload_shape():
 def test_update_services_rejects_unknown_service():
     """Unknown service name should return 400 with a helpful message.
 
-    A POST to the active services update endpoint should return a 400
+    A POST to the active service_definitions update endpoint should return a 400
     if the service name is not found in the settings.
     """
     body = [

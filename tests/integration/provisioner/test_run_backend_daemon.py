@@ -337,7 +337,7 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
     _wait_for(
         both_available,
         timeout=45,
-        description="both services AVAILABLE in cache",
+        description="both service_definitions AVAILABLE in cache",
     )
 
     logs_b = _container_logs(container_b, tail=20)
@@ -387,5 +387,5 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
     _wait_for(
         cache_empty,
         timeout=45,
-        description="active services cache empty",
+        description="active service_definitions cache empty",
     )

@@ -181,8 +181,8 @@ def _update_services(service_updates: list[dict]):
 
 
 def _start_services_locally(service_updates: list[dict]):
-    """Start services immediately in-process without relying on a background
-    daemon. This avoids interference from any externally running
+    """Start service_definitions immediately in-process without relying on a
+    background daemon. This avoids interference from any externally running
     provisioner that may be using a different settings file.
     """
     from orchestration.models import ServiceInformation
@@ -230,7 +230,7 @@ def temp_settings_file(tmp_path_factory):
 
     cfg = {
         "hosts": [{"name": "localhost", "ip": "127.0.0.1"}],
-        "services": [
+        "service-definitions": [
             {
                 "name": "test_env_and_vols",
                 "type": "container",

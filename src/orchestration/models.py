@@ -131,8 +131,8 @@ class ServiceDefinition(BaseModel):
     type: str | ServiceType
     description: str | None = None
 
-    # image is required for CONTAINER services, but optional for SOURCE_FILES
-    # and API services.
+    # image is required for CONTAINER service_definitions, but optional for
+    # SOURCE_FILES and API service_definitions.
     image: str | None = ""
 
     depends_on: list[str] | None = Field(default_factory=list)
@@ -266,7 +266,10 @@ class ProvisionerState(BaseModel):
 
 class OzwaldConfig(BaseModel):
     hosts: list[Host] = Field(default_factory=list)
-    services: list[ServiceDefinition] = Field(default_factory=list)
+    service_definitions: list[ServiceDefinition] = Field(
+        default_factory=list,
+        alias="service-definitions",
+    )
     provisioners: list[Provisioner] = Field(default_factory=list)
     networks: list[Network] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
@@ -289,7 +292,7 @@ class ProvisionerProfile(BaseModel):
 
 
 class ResourceConstraints(BaseModel):
-    """Resource requirements and constraints for services"""
+    """Resource requirements and constraints for service_definitions"""
 
     gpu_memory_required: str | None = None
     cpu_memory_required: str | None = None
@@ -298,7 +301,7 @@ class ResourceConstraints(BaseModel):
 
 
 class HealthCheck(BaseModel):
-    """Health check configuration for services"""
+    """Health check configuration for service_definitions"""
 
     endpoint: str | None = None
     interval_seconds: int = 30
@@ -307,7 +310,7 @@ class HealthCheck(BaseModel):
 
 
 class ServiceDependency(BaseModel):
-    """Defines dependencies between services"""
+    """Defines dependencies between service_definitions"""
 
     service_name: str
     required: bool = True

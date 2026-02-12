@@ -9,7 +9,7 @@ from services.container import ContainerService
 def test_complex_footprint_overrides(tmp_path, monkeypatch):
     """Verify multi-level footprint overrides in a realistic config."""
     cfg = {
-        "services": [
+        "service-definitions": [
             {
                 "name": "app",
                 "type": "container",

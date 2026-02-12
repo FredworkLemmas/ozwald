@@ -99,7 +99,7 @@ provisioners:
         port: 6379
         db: 0
 
-services:
+service-definitions:
   - name: qwen1.5-vllm
     type: container
     description: DeepSeek Qwen 1.5B via vLLM
@@ -170,8 +170,8 @@ Configuration reference
 - `hosts[]`: Named machines and their IPs.
 - `provisioners[]`: Defines where the provisioner runs and its state cache
   (Redis).
-- `services[]`: Descriptions of services, including hardware `varieties` and
-  runtime `profiles`.
+- `service-definitions[]`: Descriptions of services, including hardware
+  `varieties` and runtime `profiles`.
 
 CLI usage
 ---------

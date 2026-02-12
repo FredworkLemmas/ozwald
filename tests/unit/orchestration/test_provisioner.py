@@ -249,8 +249,8 @@ def test_daemon_stop_flow_sets_timestamps_and_persists(
 
     assert stop_called["count"] == 1
     assert fake_cache.set_calls, "expected cache write"
-    # With current semantics, stopped services are removed from cache.
-    # The final persisted list should no longer include the service.
+    # With current semantics, stopped service_definitions are removed from
+    # cache. The final persisted list should no longer include the service.
     persisted_list = fake_cache.set_calls[-1]
     assert isinstance(persisted_list, list)
     assert persisted_list == []
@@ -330,7 +330,7 @@ class TestUpdateServicesBehaviorEmptyList:
     ):
         _prov_mod, prov, fake_cache = provisioner_env
 
-        # Seed two AVAILABLE services
+        # Seed two AVAILABLE service_definitions
         a = _svc_info("svc-a", ServiceStatus.AVAILABLE)
         b = _svc_info("svc-b", ServiceStatus.AVAILABLE)
         fake_cache._services = [a, b]

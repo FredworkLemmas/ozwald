@@ -1,7 +1,7 @@
 """FastAPI application for the Ozwald Provisioner service.
 
-This API allows an orchestrator to control which services are provisioned
-and provides information about available resources.
+This API allows an orchestrator to control which service_definitions
+are provisioned and provides information about available resources.
 """
 
 from __future__ import annotations
@@ -349,7 +349,7 @@ async def _get_service_runner_logs(
     provisioner = SystemProvisioner.singleton()
     cache = provisioner.get_cache()
 
-    # Try to resolve container name from active services
+    # Try to resolve container name from active service_definitions
     active_cache = ActiveServicesCache(cache)
     active_services = active_cache.get_services()
 
