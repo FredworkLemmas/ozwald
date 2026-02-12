@@ -1,3 +1,3 @@
 """the orchestration module coordinates the models and context classes into
-one or more services.
+one or more service_definitions.
 """

@@ -39,7 +39,7 @@ class ConfigReader:
 
         # Initialize attributes that will be populated
         self.hosts: List[Host] = []
-        self.services: List[ServiceDefinition] = []
+        self.service_definitions: List[ServiceDefinition] = []
         self.provisioners: List[Provisioner] = []
         self.networks: List[Network] = []
         # Top-level named volumes (normalized)
@@ -69,7 +69,7 @@ class ConfigReader:
         self._parse_hosts()
         self._parse_networks()
         self._parse_volumes()
-        self._parse_services()
+        self._parse_service_definitions()
         self._parse_provisioners()
 
     # ---------------- Internal helpers -----------------
@@ -202,15 +202,16 @@ class ConfigReader:
             network = Network(name=network_data["name"])
             self.networks.append(network)
 
-    def _parse_services(self) -> None:
-        """Parse services section and create ServiceDefinition models.
+    def _parse_service_definitions(self) -> None:
+        """
+        Parse service-definitions section and create ServiceDefinition models.
 
         Supports service-level profiles and varieties. Varieties behave like
         alternative definitions (e.g., different container images) that can
         override docker-compose-like fields; parent-level fields are used as
         defaults and merged appropriately.
         """
-        services_data = self._raw_config.get("services", [])
+        services_data = self._raw_config.get("service-definitions", [])
 
         for i, service_data in enumerate(services_data):
             if "name" not in service_data:
@@ -346,7 +347,7 @@ class ConfigReader:
                 profiles=profiles_dict,
                 varieties=varieties,
             )
-            self.services.append(service_def)
+            self.service_definitions.append(service_def)
 
     def _normalize_service_volumes(self, raw_vols) -> List[str]:
         """Return a list of docker-ready volume strings.
@@ -487,7 +488,7 @@ class ConfigReader:
     ) -> Optional[ServiceDefinition]:
         """Get a service definition by service_name."""
         result = None
-        for service in self.services:
+        for service in self.service_definitions:
             if service.service_name == service_name:
                 result = service
         # logger.info("get_service_by_name %s -> %s", service_name, result)

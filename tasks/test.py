@@ -70,7 +70,7 @@ def _ensure_temp_assets(
                     },
                 },
             ],
-            "services": [
+            "service-definitions": [
                 {
                     "name": "test_env_and_vols",
                     "type": "container",
@@ -120,7 +120,7 @@ def integration(
     temp_root: str = "",
     use_dev_settings: bool = False,
 ):
-    """Run integration tests against provisioner services."""
+    """Run integration tests against provisioner service_definitions."""
 
     # Verify the API health endpoint is responsive (on host)
     port = int(os.environ.get("OZWALD_PROVISIONER_PORT", 8000))

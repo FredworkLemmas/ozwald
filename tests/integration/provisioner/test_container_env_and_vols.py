@@ -142,6 +142,7 @@ def env_for_daemon(config_from_env: Path) -> dict:
             os.environ.get("DEFAULT_OZWALD_PROVISIONER", "jamma"),
         ),
     )
+    mp.setenv("OZWALD_HOST", os.environ.get("OZWALD_HOST", "localhost"))
     try:
         yield os.environ.copy()
     finally:
@@ -186,6 +187,23 @@ def _update_services(service_updates: List[dict]):
 
     infos = [ServiceInformation(**item) for item in service_updates]
     prov.update_services(infos)
+
+
+def _start_services_locally(service_updates: List[dict]):
+    """
+    Start service_definitions immediately in-process without relying on a
+    background daemon.
+    """
+    from orchestration.models import ServiceInformation
+    from services.container import ContainerService
+
+    # Ensure singletons refer to this process config/cache
+    _update_services(service_updates)
+
+    infos = [ServiceInformation(**item) for item in service_updates]
+    for si in infos:
+        svc = ContainerService(service_info=si)
+        svc.start()
 
 
 # --- The test ---
@@ -250,7 +268,7 @@ def test_container_env_and_volumes(
             "status": ServiceStatus.STARTING,
         },
     ]
-    _update_services(body)
+    _start_services_locally(body)
 
     # Register instance for teardown
     started_instances.append(instance_name)

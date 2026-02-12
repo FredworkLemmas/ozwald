@@ -109,8 +109,8 @@ class SystemProvisioner:
         return _system_provisioner
 
     def get_configured_services(self) -> List[ServiceDefinition]:
-        """Get all services configured for this provisioner"""
-        return self.config_reader.services
+        """Get all service_definitions configured for this provisioner"""
+        return self.config_reader.service_definitions
 
     def get_active_services(self) -> List[ServiceInformation]:
         """Get all currently active services"""
@@ -491,7 +491,7 @@ class SystemProvisioner:
         updated = True
 
         try:
-            # Some services may not implement stop yet
+            # Some service_definitions may not implement stop yet
             stop_fn = getattr(
                 service_instance,
                 "stop",
@@ -812,7 +812,7 @@ class SystemProvisioner:
 
         targets: List[ConfiguredServiceIdentifier] = []
         if request.footprint_all_services:
-            for svc_def in self.config_reader.services:
+            for svc_def in self.config_reader.service_definitions:
                 for target in target_iterator(svc_def):
                     targets.append(target)
 

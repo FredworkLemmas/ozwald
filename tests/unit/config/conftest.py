@@ -94,7 +94,7 @@ def sample_config_dict():
                 ],
             },
         ],
-        "services": [
+        "service-definitions": [
             {
                 "name": "qwen1.5-vllm",
                 "type": "container",
@@ -165,13 +165,13 @@ def sample_config_file(sample_config_dict, tmp_path):
 @pytest.fixture
 def minimal_config_dict():
     """Provides a minimal valid configuration with only required fields."""
-    return {"hosts": [], "services": [], "provisioners": []}
+    return {"hosts": [], "service-definitions": [], "provisioners": []}
 
 
 @pytest.fixture
 def config_without_cache_dict():
     """Provides a configuration without cache to test optional cache field."""
-    return {"hosts": [], "services": [], "provisioners": []}
+    return {"hosts": [], "service-definitions": [], "provisioners": []}
 
 
 @pytest.fixture
@@ -188,7 +188,7 @@ def config_with_provisioner_without_cache_dict():
     """Provides a configuration with provisioners that don't have cache."""
     return {
         "hosts": [],
-        "services": [],
+        "service-definitions": [],
         "provisioners": [{"name": "test-provisioner", "host": "test-host"}],
     }
 
@@ -234,7 +234,7 @@ def invalid_yaml_file(tmp_path):
 @pytest.fixture
 def missing_orchestrator_config_dict():
     """Deprecated: orchestrator section removed from simplified schema."""
-    return {"hosts": [], "services": [], "provisioners": []}
+    return {"hosts": [], "service-definitions": [], "provisioners": []}
 
 
 @pytest.fixture

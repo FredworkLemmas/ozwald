@@ -186,7 +186,7 @@ class TestUpdateServices:
         auth_header: dict[str, str],
         mocker,
     ) -> None:
-        """`/srv/services/update/` responds 202 and calls
+        """`/srv/services/active/update/` responds 202 and calls
         `provisioner.update_services(...)` with parsed models.
         """
         # Payload to send (as JSON)
@@ -214,7 +214,7 @@ class TestUpdateServices:
         )
 
         resp = client.post(
-            "/srv/services/update/",
+            "/srv/services/active/update/",
             json=payload,
             headers=auth_header,
         )

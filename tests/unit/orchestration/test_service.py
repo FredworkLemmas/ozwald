@@ -242,7 +242,7 @@ class TestServiceRegistry:
         # Build the registry
         registry = BaseProvisionableService._build_service_registry()
 
-        # SimpleTestOneService is defined in services.testing with
+        # SimpleTestOneService is defined in service_definitions.testing with
         # service_type 'simple_test_one'
         assert "simple_test_one" in registry
         cls = registry["simple_test_one"]

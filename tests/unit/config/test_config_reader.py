@@ -26,17 +26,17 @@ class TestConfigReaderInitialization:
 
         assert reader.config_path == sample_config_file
         assert reader.hosts is not None
-        assert reader.services is not None
+        assert reader.service_definitions is not None
         assert reader.provisioners is not None
 
     def test_init_with_minimal_config(self, minimal_config_file):
         """Verify that ConfigReader can handle minimal valid configuration
-        with empty lists for hosts, services, and provisioners.
+        with empty lists for hosts, service_definitions, and provisioners.
         """
         reader = ConfigReader(str(minimal_config_file))
 
         assert len(reader.hosts) == 0
-        assert len(reader.services) == 0
+        assert len(reader.service_definitions) == 0
         assert len(reader.provisioners) == 0
 
     def test_init_with_nonexistent_file(self, tmp_path):
@@ -205,7 +205,7 @@ class TestNetworkParsing:
         cfg = {
             "networks": [{"name": "layer1"}, {"name": "layer2"}],
             "hosts": [],
-            "services": [],
+            "service-definitions": [],
             "provisioners": [],
         }
         cfg_path = tmp_path / "test_networks.yml"
@@ -222,7 +222,7 @@ class TestNetworkParsing:
     def test_service_networks_are_parsed(self, tmp_path):
         """Verify that networks in service definitions are parsed."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc1",
                     "type": "container",
@@ -271,9 +271,10 @@ class TestServiceParsing:
         """
         reader = ConfigReader(str(sample_config_file))
 
-        assert len(reader.services) == 2
+        assert len(reader.service_definitions) == 2
         assert all(
-            isinstance(svc, ServiceDefinition) for svc in reader.services
+            isinstance(svc, ServiceDefinition)
+            for svc in reader.service_definitions
         )
 
     def test_service_attributes(self, sample_config_file):
@@ -283,7 +284,9 @@ class TestServiceParsing:
         reader = ConfigReader(str(sample_config_file))
 
         qwen_service = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+            s
+            for s in reader.service_definitions
+            if s.service_name == "qwen1.5-vllm"
         )
         assert qwen_service.service_name == "qwen1.5-vllm"
         # `type` is now a string, not an enum
@@ -313,12 +316,14 @@ class TestServiceParsing:
 
     def test_service_profiles_are_parsed(self, sample_config_file):
         """Verify that service profiles with their environment are
-        correctly parsed and associated with services.
+        correctly parsed and associated with service_definitions.
         """
         reader = ConfigReader(str(sample_config_file))
 
         qwen_service = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+            s
+            for s in reader.service_definitions
+            if s.service_name == "qwen1.5-vllm"
         )
         assert len(qwen_service.profiles) == 2
 
@@ -338,7 +343,9 @@ class TestServiceParsing:
         """
         cfg = sample_config_dict
         # Ensure base has MODEL_NAME
-        svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
+        svc = next(
+            s for s in cfg["service-definitions"] if s["name"] == "qwen1.5-vllm"
+        )
         svc["environment"]["MODEL_NAME"] = "base-model/name"
         # Make profiles a list case and override MODEL_NAME inside 'embed'
         for p in svc["profiles"]:
@@ -371,7 +378,9 @@ class TestServiceParsing:
         profile via get_effective_service_definition.
         """
         cfg = sample_config_dict
-        svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
+        svc = next(
+            s for s in cfg["service-definitions"] if s["name"] == "qwen1.5-vllm"
+        )
         # Base value
         svc["environment"]["FOO"] = "base"
         # Ensure varieties exist and set FOO at variety level
@@ -407,11 +416,14 @@ class TestServiceParsing:
         assert eff_p.environment["FOO"] == "profile"
 
     def test_service_without_profiles(self, sample_config_file):
-        """Verify that services without profiles have an empty profiles list."""
+        """
+        Verify that service_definitions without profiles have an empty
+        profiles list.
+        """
         reader = ConfigReader(str(sample_config_file))
 
         chunker_service = next(
-            s for s in reader.services if s.service_name == "chunker"
+            s for s in reader.service_definitions if s.service_name == "chunker"
         )
         assert len(chunker_service.profiles) == 0
 
@@ -506,7 +518,7 @@ class TestIntegration:
 
         # Verify sections are populated per simplified schema
         assert len(reader.hosts) > 0
-        assert len(reader.services) > 0
+        assert len(reader.service_definitions) > 0
         assert len(reader.provisioners) > 0
 
     def test_pathlib_path_initialization(self, sample_config_file):
@@ -533,7 +545,7 @@ class TestVolumesInProfilesVarieties:
         host1.mkdir()
         cfg = {
             "hosts": [],
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -596,7 +608,7 @@ class TestFootprintParsing:
     def test_footprint_parsing_simple(self, tmp_path):
         """Verify that footprint is parsed from base service definition."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -622,7 +634,7 @@ class TestFootprintParsing:
         Verify that footprint is merged via get_effective_service_definition.
         """
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -662,7 +674,7 @@ class TestFootprintParsing:
     def test_footprint_parsing_variety(self, tmp_path):
         """Verify that footprint is extracted for varieties."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -694,7 +706,7 @@ class TestEffectiveServiceDefinition:
     def test_merge_precedence(self, tmp_path):
         """Verify merge precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -734,7 +746,7 @@ class TestEffectiveServiceDefinition:
     def test_property_merging(self, tmp_path):
         """Verify property merging precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -769,7 +781,7 @@ class TestEffectiveServiceDefinition:
     def test_volume_merging(self, tmp_path):
         """Verify volume merging by target precedence."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",
@@ -807,7 +819,7 @@ class TestEffectiveServiceDefinition:
     def test_network_merging(self, tmp_path):
         """Verify network merging precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
+            "service-definitions": [
                 {
                     "name": "svc",
                     "type": "container",

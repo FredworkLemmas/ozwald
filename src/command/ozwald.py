@@ -394,7 +394,9 @@ def _parse_services_spec(spec: str) -> list[dict[str, Any]]:
     for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
         result.append(_parse_services_spec_entry(raw, cfg))
     if not result:
-        raise ValueError("No services parsed from specification string")
+        raise ValueError(
+            "No service_definitions parsed from specification string"
+        )
     return result
 
 
@@ -466,7 +468,9 @@ def _parse_footprint_spec(spec: str) -> list[dict[str, Any]]:
     for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
         result.append(_parse_footprint_spec_entry(raw, cfg))
     if not result:
-        raise ValueError("No services parsed from footprint specification")
+        raise ValueError(
+            "No service_definitions parsed from footprint specification"
+        )
     return result
 
 
@@ -483,12 +487,13 @@ def action_footprint_services(
         if all_services:
             if spec:
                 print(
-                    "Warning: services specification ignored when using --all"
+                    "Warning: service_definitions specification ignored when "
+                    "using --all"
                 )
         else:
             if not spec:
                 print(
-                    "Error: services specification is required when "
+                    "Error: service_definitions specification is required when "
                     "not using --all",
                 )
                 return 2
@@ -505,7 +510,9 @@ def action_footprint_services(
         print(f"Unexpected response: {json.dumps(data)}")
         return 2
     except Exception as e:
-        print(f"Error footprinting services: {type(e).__name__}({e})")
+        print(
+            f"Error footprinting service_definitions: {type(e).__name__}({e})"
+        )
         return 2
 
 
@@ -516,7 +523,7 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         else:
             if not spec:
                 print(
-                    "Error: services specification is required when "
+                    "Error: service_definitions specification is required when "
                     "not using --clear",
                 )
                 return 2
@@ -534,7 +541,7 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         print(f"Unexpected response: {json.dumps(data)}")
         return 2
     except Exception as e:
-        print(f"Error updating services: {type(e).__name__}({e})")
+        print(f"Error updating service_definitions: {type(e).__name__}({e})")
         return 2
 
 
@@ -696,13 +703,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--clear",
         action="store_true",
         help=(
-            "For update_services: send an empty list to clear active services"
+            "For update_services: send an empty list to clear active "
+            "service_definitions"
         ),
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="For footprint_services: footprint all services",
+        help="For footprint_services: footprint all service_definitions",
     )
     parser.add_argument(
         "--profile",
