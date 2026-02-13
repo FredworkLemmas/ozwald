@@ -6,11 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
 # ============================================================================
 # Resource Models
 # ============================================================================
-
-
 class ResourceType(str, Enum):
     GPU = "gpu"
     CPU = "cpu"
@@ -34,8 +33,6 @@ class Network(BaseModel):
 # ============================================================================
 # Host Models
 # ============================================================================
-
-
 class Host(BaseModel):
     name: str
     ip: str
@@ -45,8 +42,6 @@ class Host(BaseModel):
 # ============================================================================
 # Footprint Models
 # ============================================================================
-
-
 class FootprintConfig(BaseModel):
     run_time: int | None = Field(default=None, alias="run-time")
     run_script: str | None = Field(default=None, alias="run-script")
@@ -80,8 +75,6 @@ class FootprintLogLines(BaseModel):
 # ============================================================================
 # Service Definition Models (Templates)
 # ============================================================================
-
-
 class ServiceType(str, Enum):
     """Common service type identifiers used across the system.
 
@@ -176,19 +169,6 @@ class EffectiveServiceDefinition(BaseModel):
 # ============================================================================
 # Service Usage Models (Runtime)
 # ============================================================================
-# class SystemUsageDelta(BaseModel):
-#     cpu_cores: float = 0.0
-#     memory_gb: float = 0.0
-#     vram_gb: float = 0.0
-
-
-# class ServiceInstanceUsage(BaseModel):
-#     service_name: str
-#     profile: str | None
-#     variety: str | None
-#     usage: SystemUsageDelta
-
-
 class ServiceInstanceUsage(BaseModel):
     cpu_cores: float = 0.0
     memory_gb: float = 0.0
@@ -212,7 +192,7 @@ class ServiceStatus(str, Enum):
 
 
 class Service(BaseModel):
-    """Represents an instantiated service in a mode"""
+    """Represents an instantiated service"""
 
     name: str
     service_name: str  # Reference to ServiceDefinition
@@ -221,7 +201,7 @@ class Service(BaseModel):
 
 
 class ServiceInformation(BaseModel):
-    """Information about a service"""
+    """Information about a running service"""
 
     name: str
     service: str
@@ -235,8 +215,6 @@ class ServiceInformation(BaseModel):
 # ============================================================================
 # Cache Models
 # ============================================================================
-
-
 class Cache(BaseModel):
     type: str
     parameters: dict[str, Any] | None = None
@@ -245,8 +223,6 @@ class Cache(BaseModel):
 # ============================================================================
 # Provisioner Models
 # ============================================================================
-
-
 class Provisioner(BaseModel):
     name: str
     host: str  # Reference to Host name
@@ -262,8 +238,6 @@ class ProvisionerState(BaseModel):
 # ============================================================================
 # Root Configuration Model
 # ============================================================================
-
-
 class OzwaldConfig(BaseModel):
     hosts: list[Host] = Field(default_factory=list)
     service_definitions: list[ServiceDefinition] = Field(
@@ -279,8 +253,6 @@ class OzwaldConfig(BaseModel):
 # ============================================================================
 # Legacy Model (keeping for backward compatibility)
 # ============================================================================
-
-
 class ProvisionerProfile(BaseModel):
     name: str
     services: list[Service]
@@ -289,8 +261,6 @@ class ProvisionerProfile(BaseModel):
 # ============================================================================
 # DSPy/LLM Pipeline Enhancement Models
 # ============================================================================
-
-
 class ResourceConstraints(BaseModel):
     """Resource requirements and constraints for service_definitions"""
 
