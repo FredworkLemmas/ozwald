@@ -164,8 +164,8 @@ class TestStopAllViaEndpoint:
         profile = None
         name_a = "it-simple_test_1-1"
         name_b = "it-simple_test_1-2"
-        container_a = f"service-{name_a}"
-        container_b = f"service-{name_b}"
+        container_a = f"ozsvc--default--{name_a}"
+        container_b = f"ozsvc--default--{name_b}"
 
         cfg = _load_settings()
         host, port, db, password = _get_cache_params(cfg)

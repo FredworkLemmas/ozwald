@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import yaml
 
@@ -11,6 +11,7 @@ from orchestration.models import (
     Host,
     Network,
     Provisioner,
+    Realm,
     Resource,
     ServiceDefinition,
     ServiceDefinitionProfile,
@@ -39,9 +40,10 @@ class ConfigReader:
 
         # Initialize attributes that will be populated
         self.hosts: List[Host] = []
-        self.services: List[ServiceDefinition] = []
+        self.service_definitions: List[ServiceDefinition] = []
         self.provisioners: List[Provisioner] = []
         self.networks: List[Network] = []
+        self.realms: Dict[str, Realm] = {}
         # Top-level named volumes (normalized)
         self.volumes: Dict[str, Dict[str, Any]] = {}
 
@@ -67,9 +69,8 @@ class ConfigReader:
     def _parse_config(self) -> None:
         """Parse raw configuration and hydrate models."""
         self._parse_hosts()
-        self._parse_networks()
         self._parse_volumes()
-        self._parse_services()
+        self._parse_realms()
         self._parse_provisioners()
 
     # ---------------- Internal helpers -----------------
@@ -193,30 +194,71 @@ class ConfigReader:
             )
             self.hosts.append(host)
 
-    def _parse_networks(self) -> None:
+    def _parse_realms(self) -> None:
+        """Parse realms section and create Realm models."""
+        realms_data = self._raw_config.get("realms", {})
+        for realm_name, realm_data in realms_data.items():
+            if realm_data is None:
+                realm_data = {}
+
+            networks = self._parse_networks(
+                realm_data.get("networks", []),
+                realm_name,
+            )
+            services = self._parse_service_definitions(
+                realm_data.get("service-definitions", []),
+                realm_name,
+            )
+
+            self.realms[realm_name] = Realm(
+                name=realm_name,
+                networks=networks,
+                service_definitions=services,
+            )
+
+    def _parse_networks(self, networks_data: list, realm: str) -> list[Network]:
         """Parse networks section and create Network models."""
-        networks_data = self._raw_config.get("networks", [])
+        parsed_networks = []
         for i, network_data in enumerate(networks_data):
             if "name" not in network_data:
-                raise KeyError(f"Network entry at index {i} is missing 'name'")
-            network = Network(name=network_data["name"])
+                raise KeyError(
+                    f"Network entry at index {i} in realm '{realm}' "
+                    "is missing 'name'"
+                )
+            network = Network(
+                name=network_data["name"],
+                type=network_data.get("type", "bridge"),
+                realm=realm,
+            )
             self.networks.append(network)
+            parsed_networks.append(network)
+        return parsed_networks
 
-    def _parse_services(self) -> None:
-        """Parse services section and create ServiceDefinition models.
+    def _parse_service_definitions(
+        self,
+        services_data: list,
+        realm: str,
+    ) -> list[ServiceDefinition]:
+        """
+        Parse service-definitions section and create ServiceDefinition models.
 
         Supports service-level profiles and varieties. Varieties behave like
         alternative definitions (e.g., different container images) that can
         override docker-compose-like fields; parent-level fields are used as
         defaults and merged appropriately.
         """
-        services_data = self._raw_config.get("services", [])
-
+        parsed_services = []
         for i, service_data in enumerate(services_data):
             if "name" not in service_data:
-                raise KeyError(f"Service entry at index {i} is missing 'name'")
+                raise KeyError(
+                    f"Service entry at index {i} in realm '{realm}' "
+                    "is missing 'name'"
+                )
             if "type" not in service_data:
-                raise KeyError(f"Service entry at index {i} is missing 'type'")
+                raise KeyError(
+                    f"Service entry at index {i} in realm '{realm}' "
+                    "is missing 'type'"
+                )
 
             # Parent (service-level) docker-compose-like fields
             parent_env = service_data.get("environment", {}) or {}
@@ -331,6 +373,7 @@ class ConfigReader:
 
             service_def = ServiceDefinition(
                 service_name=service_data["name"],
+                realm=realm,
                 type=service_data["type"],
                 description=service_data.get("description"),
                 image=service_image,
@@ -346,7 +389,10 @@ class ConfigReader:
                 profiles=profiles_dict,
                 varieties=varieties,
             )
-            self.services.append(service_def)
+            self.service_definitions.append(service_def)
+            parsed_services.append(service_def)
+
+        return parsed_services
 
     def _normalize_service_volumes(self, raw_vols) -> List[str]:
         """Return a list of docker-ready volume strings.
@@ -481,31 +527,44 @@ class ConfigReader:
                 return host
         return None
 
+    def get_network_by_name(self, name: str, realm: str) -> Optional[Network]:
+        """Get a network by name and realm."""
+        for network in self.networks:
+            if network.name == name and network.realm == realm:
+                return network
+        return None
+
     def get_service_by_name(
         self,
         service_name: str,
+        realm: str,
     ) -> Optional[ServiceDefinition]:
-        """Get a service definition by service_name."""
-        result = None
-        for service in self.services:
-            if service.service_name == service_name:
-                result = service
-        # logger.info("get_service_by_name %s -> %s", service_name, result)
-        return result
+        """Get a service definition by service_name and realm."""
+        for service in self.service_definitions:
+            if service.service_name == service_name and service.realm == realm:
+                return service
+        return None
 
     def get_effective_service_definition(
         self,
         service: str | ServiceDefinition,
         profile: str | None,
         variety: str | None,
+        realm: str | None = None,
     ) -> EffectiveServiceDefinition:
         """Get the effective service definition by merging base, variety, and
         profile fields.
         """
         if isinstance(service, str):
-            sd = self.get_service_by_name(service)
+            if realm is None:
+                raise ValueError(
+                    f"realm is required when service is a string: {service}",
+                )
+            sd = self.get_service_by_name(service, realm)
             if not sd:
-                raise ValueError(f"Service definition not found: {service}")
+                raise ValueError(
+                    f"Service definition not found: {service} in realm {realm}",
+                )
         else:
             sd = service
 
@@ -604,6 +663,7 @@ class ConfigReader:
             return None
 
         return EffectiveServiceDefinition(
+            realm=sd.realm,
             image=choose(p_image, v_image, base_image) or "",
             environment=merged_env,
             properties=merged_props,
@@ -617,6 +677,11 @@ class ConfigReader:
             or ["default"],
             footprint=merged_footprint,
         )
+
+    @property
+    def defined_networks(self) -> Iterable[Network]:
+        """Iterator that yields all networks defined as Network objects."""
+        return iter(self.networks)
 
     # No action/mode lookups in simplified schema.
 

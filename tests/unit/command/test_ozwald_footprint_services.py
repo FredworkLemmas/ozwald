@@ -22,7 +22,7 @@ class TestOzwaldFootprintServices:
         singleton = mocker.patch("command.ozwald.SystemConfigReader.singleton")
         cfg = types.SimpleNamespace()
 
-        def get_service_by_name(name):
+        def get_service_by_name(name, realm):
             return service_map.get(name)
 
         cfg.get_service_by_name = get_service_by_name
@@ -59,7 +59,12 @@ class TestOzwaldFootprintServices:
         assert called["args"]["body"] == {
             "footprint_all_services": False,
             "services": [
-                {"service_name": "svc1", "profile": None, "variety": None},
+                {
+                    "service_name": "svc1",
+                    "realm": "default",
+                    "profile": None,
+                    "variety": None,
+                },
             ],
         }
 
@@ -71,6 +76,7 @@ class TestOzwaldFootprintServices:
         assert rc == 0
         assert called["args"]["body"]["services"][0] == {
             "service_name": "svc1",
+            "realm": "default",
             "profile": "p1",
             "variety": None,
         }
@@ -83,6 +89,7 @@ class TestOzwaldFootprintServices:
         assert rc == 0
         assert called["args"]["body"]["services"][0] == {
             "service_name": "svc1",
+            "realm": "default",
             "profile": None,
             "variety": "v1",
         }
@@ -95,6 +102,7 @@ class TestOzwaldFootprintServices:
         assert rc == 0
         assert called["args"]["body"]["services"][0] == {
             "service_name": "svc1",
+            "realm": "default",
             "profile": "p1",
             "variety": "v1",
         }
@@ -138,6 +146,8 @@ class TestOzwaldFootprintServices:
         services = called["args"]["body"]["services"]
         assert len(services) == 2
         assert services[0]["service_name"] == "s1"
+        assert services[0]["realm"] == "default"
         assert services[1]["service_name"] == "s2"
+        assert services[1]["realm"] == "default"
         assert services[1]["profile"] == "p2"
         assert services[1]["variety"] == "v2"

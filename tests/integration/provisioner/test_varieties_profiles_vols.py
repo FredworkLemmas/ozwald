@@ -181,8 +181,8 @@ def _update_services(service_updates: list[dict]):
 
 
 def _start_services_locally(service_updates: list[dict]):
-    """Start services immediately in-process without relying on a background
-    daemon. This avoids interference from any externally running
+    """Start service_definitions immediately in-process without relying on a
+    background daemon. This avoids interference from any externally running
     provisioner that may be using a different settings file.
     """
     from orchestration.models import ServiceInformation
@@ -190,6 +190,9 @@ def _start_services_locally(service_updates: list[dict]):
 
     # Ensure singletons refer to this process config/cache
     _update_services(service_updates)
+
+    # Initialize services (e.g., create networks)
+    ContainerService.init_service()
 
     infos = [ServiceInformation(**item) for item in service_updates]
     for si in infos:
@@ -230,50 +233,15 @@ def temp_settings_file(tmp_path_factory):
 
     cfg = {
         "hosts": [{"name": "localhost", "ip": "127.0.0.1"}],
-        "services": [
-            {
-                "name": "test_env_and_vols",
-                "type": "container",
-                "image": "test_env_and_vols",
-                "environment": {
-                    "FILE_LISTING_PATHS": "/solar_system",
-                },
-                "volumes": [
+        "realms": {
+            "default": {
+                "service-definitions": [
                     {
-                        "name": "solar_system",
-                        "target": "/solar_system",
-                        "read_only": True,
-                    },
-                ],
-                "varieties": {
-                    "A": {
+                        "name": "test_env_and_vols",
+                        "type": "container",
+                        "image": "test_env_and_vols",
                         "environment": {
-                            "FILE_LISTING_PATHS": "/solar_system:/extras",
-                        },
-                        "volumes": [
-                            {
-                                "name": "solar_extras",
-                                "target": "/extras",
-                                "read_only": False,
-                            },
-                        ],
-                    },
-                    "B": {
-                        "volumes": [
-                            {
-                                "name": "solar_system",
-                                "target": "/solar_system",
-                                "read_only": False,
-                            },
-                        ],
-                    },
-                },
-                "profiles": {
-                    "P": {
-                        "environment": {
-                            "FILE_LISTING_PATHS": (
-                                "/solar_system:/extras:/third"
-                            ),
+                            "FILE_LISTING_PATHS": "/solar_system",
                         },
                         "volumes": [
                             {
@@ -281,16 +249,57 @@ def temp_settings_file(tmp_path_factory):
                                 "target": "/solar_system",
                                 "read_only": True,
                             },
-                            {
-                                "name": "solar_third",
-                                "target": "/third",
-                                "read_only": False,
-                            },
                         ],
+                        "varieties": {
+                            "A": {
+                                "environment": {
+                                    "FILE_LISTING_PATHS": (
+                                        "/solar_system:/extras"
+                                    ),
+                                },
+                                "volumes": [
+                                    {
+                                        "name": "solar_extras",
+                                        "target": "/extras",
+                                        "read_only": False,
+                                    },
+                                ],
+                            },
+                            "B": {
+                                "volumes": [
+                                    {
+                                        "name": "solar_system",
+                                        "target": "/solar_system",
+                                        "read_only": False,
+                                    },
+                                ],
+                            },
+                        },
+                        "profiles": {
+                            "P": {
+                                "environment": {
+                                    "FILE_LISTING_PATHS": (
+                                        "/solar_system:/extras:/third"
+                                    ),
+                                },
+                                "volumes": [
+                                    {
+                                        "name": "solar_system",
+                                        "target": "/solar_system",
+                                        "read_only": True,
+                                    },
+                                    {
+                                        "name": "solar_third",
+                                        "target": "/third",
+                                        "read_only": False,
+                                    },
+                                ],
+                            },
+                        },
                     },
-                },
-            },
-        ],
+                ],
+            }
+        },
         "provisioners": [
             {
                 "name": provisioner_name,
@@ -371,7 +380,7 @@ def _cleanup_service_containers():
     try:
         yield
     finally:
-        prefix = "service-it-vp-"
+        prefix = "ozsvc--default--it-vp-"
         try:
             leftover = _list_containers(prefix)
         except Exception:
@@ -399,7 +408,7 @@ class TestVarietiesProfilesVolumes:
             },
         ]
         _start_services_locally(body)
-        container = f"service-{name}"
+        container = f"ozsvc--default--{name}"
         _wait_for(lambda: _container_running(container), 30)
         logs = _container_logs(container, tail=500)
         data = yaml.safe_load(logs)
@@ -422,7 +431,7 @@ class TestVarietiesProfilesVolumes:
             },
         ]
         _start_services_locally(body)
-        container = f"service-{name}"
+        container = f"ozsvc--default--{name}"
         _wait_for(lambda: _container_running(container), 30)
         rc = _exec_in_container(container, "echo x > /solar_system/_w")
         assert rc == 0
@@ -445,7 +454,7 @@ class TestVarietiesProfilesVolumes:
             },
         ]
         _start_services_locally(body)
-        container = f"service-{name}"
+        container = f"ozsvc--default--{name}"
         _wait_for(lambda: _container_running(container), 30)
         # profile P sets solar_system back to ro
         rc = _exec_in_container(container, "echo x > /solar_system/_w")

@@ -301,7 +301,13 @@ def _parse_services_spec_entry(
         raise ValueError(
             "Invalid service spec entry; expected NAME[service]...",
         )
+    realm = "default"
     name_part = entry.split("[", 1)[0].strip()
+    if ":" in name_part:
+        realm, name_part = name_part.split(":", 1)
+        realm = realm.strip()
+        name_part = name_part.strip()
+
     if not name_part:
         raise ValueError("Service instance name is required before '['")
 
@@ -314,7 +320,7 @@ def _parse_services_spec_entry(
         raise ValueError("Service name cannot be empty")
 
     # Look up service definition to validate/disambiguate
-    svc_def = cfg.get_service_by_name(service_name)
+    svc_def = cfg.get_service_by_name(service_name, realm)
     varieties = set((svc_def.varieties or {}).keys()) if svc_def else set()
     profiles = set((svc_def.profiles or {}).keys()) if svc_def else set()
 
@@ -383,6 +389,7 @@ def _parse_services_spec_entry(
     return {
         "name": name_part,
         "service": service_name,
+        "realm": realm,
         "variety": variety,
         "profile": profile,
     }
@@ -394,7 +401,9 @@ def _parse_services_spec(spec: str) -> list[dict[str, Any]]:
     for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
         result.append(_parse_services_spec_entry(raw, cfg))
     if not result:
-        raise ValueError("No services parsed from specification string")
+        raise ValueError(
+            "No service_definitions parsed from specification string"
+        )
     return result
 
 
@@ -402,14 +411,22 @@ def _parse_footprint_spec_entry(
     entry: str,
     cfg: SystemConfigReader,
 ) -> dict[str, Any]:
-    service_name = entry.split("[", 1)[0].strip()
+    realm = "default"
+    name_part = entry.split("[", 1)[0].strip()
+    if ":" in name_part:
+        realm, service_name = name_part.split(":", 1)
+        realm = realm.strip()
+        service_name = service_name.strip()
+    else:
+        service_name = name_part
+
     if not service_name:
         raise ValueError("Service name is required")
 
     tokens = [t.strip() for t in _bracket_tokens(entry)]
-    svc_def = cfg.get_service_by_name(service_name)
+    svc_def = cfg.get_service_by_name(service_name, realm)
     if not svc_def:
-        raise ValueError(f"Unknown service '{service_name}'")
+        raise ValueError(f"Unknown service '{service_name}' in realm '{realm}'")
 
     has_profiles = bool(svc_def.profiles)
     has_varieties = bool(svc_def.varieties)
@@ -455,6 +472,7 @@ def _parse_footprint_spec_entry(
 
     return {
         "service_name": service_name,
+        "realm": realm,
         "profile": profile,
         "variety": variety,
     }
@@ -466,7 +484,9 @@ def _parse_footprint_spec(spec: str) -> list[dict[str, Any]]:
     for raw in [p.strip() for p in (spec or "").split(",") if p.strip()]:
         result.append(_parse_footprint_spec_entry(raw, cfg))
     if not result:
-        raise ValueError("No services parsed from footprint specification")
+        raise ValueError(
+            "No service_definitions parsed from footprint specification"
+        )
     return result
 
 
@@ -483,12 +503,13 @@ def action_footprint_services(
         if all_services:
             if spec:
                 print(
-                    "Warning: services specification ignored when using --all"
+                    "Warning: service_definitions specification ignored when "
+                    "using --all"
                 )
         else:
             if not spec:
                 print(
-                    "Error: services specification is required when "
+                    "Error: service_definitions specification is required when "
                     "not using --all",
                 )
                 return 2
@@ -505,7 +526,9 @@ def action_footprint_services(
         print(f"Unexpected response: {json.dumps(data)}")
         return 2
     except Exception as e:
-        print(f"Error footprinting services: {type(e).__name__}({e})")
+        print(
+            f"Error footprinting service_definitions: {type(e).__name__}({e})"
+        )
         return 2
 
 
@@ -516,7 +539,7 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         else:
             if not spec:
                 print(
-                    "Error: services specification is required when "
+                    "Error: service_definitions specification is required when "
                     "not using --clear",
                 )
                 return 2
@@ -534,7 +557,7 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
         print(f"Unexpected response: {json.dumps(data)}")
         return 2
     except Exception as e:
-        print(f"Error updating services: {type(e).__name__}({e})")
+        print(f"Error updating service_definitions: {type(e).__name__}({e})")
         return 2
 
 
@@ -545,6 +568,7 @@ def action_get_service_launch_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
 ) -> int:
     if not service_name:
         print("Error: service name is required for get_service_launch_logs")
@@ -555,6 +579,7 @@ def action_get_service_launch_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
         )
@@ -576,6 +601,7 @@ def action_get_service_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
 ) -> int:
     if not service_name:
         print("Error: service name is required for get_service_logs")
@@ -586,6 +612,7 @@ def action_get_service_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
         )
@@ -607,6 +634,7 @@ def action_get_footprint_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
     log_type: str = "container",
 ) -> int:
     if not service_name:
@@ -618,6 +646,7 @@ def action_get_footprint_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
             log_type=log_type,
@@ -696,13 +725,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--clear",
         action="store_true",
         help=(
-            "For update_services: send an empty list to clear active services"
+            "For update_services: send an empty list to clear active "
+            "service_definitions"
         ),
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="For footprint_services: footprint all services",
+        help="For footprint_services: footprint all service_definitions",
     )
     parser.add_argument(
         "--profile",
@@ -727,6 +757,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--last",
         type=int,
         help="For get_footprint_logs: only include the last N lines of logs",
+    )
+    parser.add_argument(
+        "--realm",
+        default="default",
+        help="Realm for service lookup/logs (default: default)",
     )
     parser.add_argument(
         "services_spec",
@@ -802,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
             args.log_type,
         )
     if args.action == "get_service_launch_logs":
@@ -812,6 +848,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
         )
     if args.action == "get_service_logs":
         return action_get_service_logs(
@@ -821,6 +858,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
         )
     if args.action == "status":
         return action_status()

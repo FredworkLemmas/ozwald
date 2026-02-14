@@ -26,17 +26,17 @@ class TestConfigReaderInitialization:
 
         assert reader.config_path == sample_config_file
         assert reader.hosts is not None
-        assert reader.services is not None
+        assert reader.service_definitions is not None
         assert reader.provisioners is not None
 
     def test_init_with_minimal_config(self, minimal_config_file):
         """Verify that ConfigReader can handle minimal valid configuration
-        with empty lists for hosts, services, and provisioners.
+        with empty lists for hosts, service_definitions, and provisioners.
         """
         reader = ConfigReader(str(minimal_config_file))
 
         assert len(reader.hosts) == 0
-        assert len(reader.services) == 0
+        assert len(reader.service_definitions) == 0
         assert len(reader.provisioners) == 0
 
     def test_init_with_nonexistent_file(self, tmp_path):
@@ -203,9 +203,12 @@ class TestNetworkParsing:
     def test_networks_are_parsed(self, tmp_path):
         """Verify that all networks from the configuration are parsed."""
         cfg = {
-            "networks": [{"name": "layer1"}, {"name": "layer2"}],
+            "realms": {
+                "default": {
+                    "networks": [{"name": "layer1"}, {"name": "layer2"}],
+                }
+            },
             "hosts": [],
-            "services": [],
             "provisioners": [],
         }
         cfg_path = tmp_path / "test_networks.yml"
@@ -217,29 +220,35 @@ class TestNetworkParsing:
         assert len(reader.networks) == 2
         assert all(isinstance(n, Network) for n in reader.networks)
         assert reader.networks[0].name == "layer1"
+        assert reader.networks[0].realm == "default"
         assert reader.networks[1].name == "layer2"
+        assert reader.networks[1].realm == "default"
 
     def test_service_networks_are_parsed(self, tmp_path):
         """Verify that networks in service definitions are parsed."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc1",
-                    "type": "container",
-                    "networks": ["layer1", "layer2"],
-                    "profiles": {
-                        "p1": {"networks": ["layer3"]},
-                    },
-                    "varieties": {
-                        "v1": {"networks": ["layer4"]},
-                    },
-                },
-                {
-                    "name": "svc2",
-                    "type": "container",
-                    # No networks specified
-                },
-            ],
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc1",
+                            "type": "container",
+                            "networks": ["layer1", "layer2"],
+                            "profiles": {
+                                "p1": {"networks": ["layer3"]},
+                            },
+                            "varieties": {
+                                "v1": {"networks": ["layer4"]},
+                            },
+                        },
+                        {
+                            "name": "svc2",
+                            "type": "container",
+                            # No networks specified
+                        },
+                    ],
+                }
+            }
         }
         cfg_path = tmp_path / "test_svc_networks.yml"
         import yaml as _yaml
@@ -247,12 +256,12 @@ class TestNetworkParsing:
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
 
-        svc1 = reader.get_service_by_name("svc1")
+        svc1 = reader.get_service_by_name("svc1", "default")
         assert svc1.networks == ["layer1", "layer2"]
         assert svc1.profiles["p1"].networks == ["layer3"]
         assert svc1.varieties["v1"].networks == ["layer4"]
 
-        svc2 = reader.get_service_by_name("svc2")
+        svc2 = reader.get_service_by_name("svc2", "default")
         # Should default to ["default"]
         assert svc2.networks == ["default"]
 
@@ -271,9 +280,10 @@ class TestServiceParsing:
         """
         reader = ConfigReader(str(sample_config_file))
 
-        assert len(reader.services) == 2
+        assert len(reader.service_definitions) == 2
         assert all(
-            isinstance(svc, ServiceDefinition) for svc in reader.services
+            isinstance(svc, ServiceDefinition)
+            for svc in reader.service_definitions
         )
 
     def test_service_attributes(self, sample_config_file):
@@ -283,7 +293,9 @@ class TestServiceParsing:
         reader = ConfigReader(str(sample_config_file))
 
         qwen_service = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+            s
+            for s in reader.service_definitions
+            if s.service_name == "qwen1.5-vllm"
         )
         assert qwen_service.service_name == "qwen1.5-vllm"
         # `type` is now a string, not an enum
@@ -313,12 +325,14 @@ class TestServiceParsing:
 
     def test_service_profiles_are_parsed(self, sample_config_file):
         """Verify that service profiles with their environment are
-        correctly parsed and associated with services.
+        correctly parsed and associated with service_definitions.
         """
         reader = ConfigReader(str(sample_config_file))
 
         qwen_service = next(
-            s for s in reader.services if s.service_name == "qwen1.5-vllm"
+            s
+            for s in reader.service_definitions
+            if s.service_name == "qwen1.5-vllm"
         )
         assert len(qwen_service.profiles) == 2
 
@@ -338,7 +352,11 @@ class TestServiceParsing:
         """
         cfg = sample_config_dict
         # Ensure base has MODEL_NAME
-        svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
+        svc = next(
+            s
+            for s in cfg["realms"]["default"]["service-definitions"]
+            if s["name"] == "qwen1.5-vllm"
+        )
         svc["environment"]["MODEL_NAME"] = "base-model/name"
         # Make profiles a list case and override MODEL_NAME inside 'embed'
         for p in svc["profiles"]:
@@ -355,7 +373,7 @@ class TestServiceParsing:
         # Act
         reader = ConfigReader(str(pth))
         eff = reader.get_effective_service_definition(
-            "qwen1.5-vllm", "embed", None
+            "qwen1.5-vllm", "embed", None, realm="default"
         )
 
         # Assert: inherited non-conflicting key and overridden conflicting key
@@ -371,7 +389,11 @@ class TestServiceParsing:
         profile via get_effective_service_definition.
         """
         cfg = sample_config_dict
-        svc = next(s for s in cfg["services"] if s["name"] == "qwen1.5-vllm")
+        svc = next(
+            s
+            for s in cfg["realms"]["default"]["service-definitions"]
+            if s["name"] == "qwen1.5-vllm"
+        )
         # Base value
         svc["environment"]["FOO"] = "base"
         # Ensure varieties exist and set FOO at variety level
@@ -396,22 +418,25 @@ class TestServiceParsing:
 
         # Test effective with variety only
         eff_v = reader.get_effective_service_definition(
-            "qwen1.5-vllm", None, "cpu-only"
+            "qwen1.5-vllm", None, "cpu-only", realm="default"
         )
         assert eff_v.environment["FOO"] == "variety"
 
         # Test effective with profile (overrides variety and base)
         eff_p = reader.get_effective_service_definition(
-            "qwen1.5-vllm", "embed", "cpu-only"
+            "qwen1.5-vllm", "embed", "cpu-only", realm="default"
         )
         assert eff_p.environment["FOO"] == "profile"
 
     def test_service_without_profiles(self, sample_config_file):
-        """Verify that services without profiles have an empty profiles list."""
+        """
+        Verify that service_definitions without profiles have an empty
+        profiles list.
+        """
         reader = ConfigReader(str(sample_config_file))
 
         chunker_service = next(
-            s for s in reader.services if s.service_name == "chunker"
+            s for s in reader.service_definitions if s.service_name == "chunker"
         )
         assert len(chunker_service.profiles) == 0
 
@@ -473,7 +498,7 @@ class TestUtilityMethods:
         """
         reader = ConfigReader(str(sample_config_file))
 
-        service = reader.get_service_by_name("qwen1.5-vllm")
+        service = reader.get_service_by_name("qwen1.5-vllm", "default")
         assert service is not None
         assert service.service_name == "qwen1.5-vllm"
         assert service.type == "container"
@@ -484,7 +509,7 @@ class TestUtilityMethods:
         """
         reader = ConfigReader(str(sample_config_file))
 
-        service = reader.get_service_by_name("nonexistent")
+        service = reader.get_service_by_name("nonexistent", "default")
         assert service is None
 
     # Actions and modes are removed in the simplified schema.
@@ -506,7 +531,7 @@ class TestIntegration:
 
         # Verify sections are populated per simplified schema
         assert len(reader.hosts) > 0
-        assert len(reader.services) > 0
+        assert len(reader.service_definitions) > 0
         assert len(reader.provisioners) > 0
 
     def test_pathlib_path_initialization(self, sample_config_file):
@@ -533,33 +558,39 @@ class TestVolumesInProfilesVarieties:
         host1.mkdir()
         cfg = {
             "hosts": [],
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "volumes": [
+            "realms": {
+                "default": {
+                    "service-definitions": [
                         {
-                            "name": "v1",
-                            "target": "/t1",
-                            "read_only": True,
-                        },
-                    ],
-                    "varieties": {
-                        "A": {"volumes": [{"name": "v2", "target": "/t2"}]},
-                    },
-                    "profiles": {
-                        "P": {
+                            "name": "svc",
+                            "type": "container",
                             "volumes": [
                                 {
                                     "name": "v1",
                                     "target": "/t1",
-                                    "read_only": False,
+                                    "read_only": True,
                                 },
                             ],
+                            "varieties": {
+                                "A": {
+                                    "volumes": [{"name": "v2", "target": "/t2"}]
+                                },
+                            },
+                            "profiles": {
+                                "P": {
+                                    "volumes": [
+                                        {
+                                            "name": "v1",
+                                            "target": "/t1",
+                                            "read_only": False,
+                                        },
+                                    ],
+                                },
+                            },
                         },
-                    },
-                },
-            ],
+                    ],
+                }
+            },
             "provisioners": [],
             "volumes": {
                 "v1": {
@@ -576,7 +607,7 @@ class TestVolumesInProfilesVarieties:
         cfg_path.write_text(_yaml.safe_dump(cfg))
 
         reader = ConfigReader(str(cfg_path))
-        svc = reader.get_service_by_name("svc")
+        svc = reader.get_service_by_name("svc", "default")
         assert svc is not None
         # base volume normalized to absolute bind host
         assert any(v.endswith(":/t1:ro") for v in svc.volumes)
@@ -596,23 +627,27 @@ class TestFootprintParsing:
     def test_footprint_parsing_simple(self, tmp_path):
         """Verify that footprint is parsed from base service definition."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "footprint": {
-                        "run-time": 30,
-                        "run-script": "base.sh",
-                    },
-                },
-            ],
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "footprint": {
+                                "run-time": 30,
+                                "run-script": "base.sh",
+                            },
+                        },
+                    ],
+                }
+            }
         }
         cfg_path = tmp_path / "test_footprint.yml"
         import yaml as _yaml
 
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
-        svc = reader.get_service_by_name("svc")
+        svc = reader.get_service_by_name("svc", "default")
         assert svc.footprint is not None
         assert svc.footprint.run_time == 30
         assert svc.footprint.run_script == "base.sh"
@@ -622,26 +657,30 @@ class TestFootprintParsing:
         Verify that footprint is merged via get_effective_service_definition.
         """
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "footprint": {
-                        "run-time": 30,
-                        "run-script": "base.sh",
-                    },
-                    "profiles": {
-                        "p1": {
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
                             "footprint": {
-                                "run-time": 60,
+                                "run-time": 30,
+                                "run-script": "base.sh",
+                            },
+                            "profiles": {
+                                "p1": {
+                                    "footprint": {
+                                        "run-time": 60,
+                                    },
+                                },
+                                "p2": {
+                                    "description": "no footprint override",
+                                },
                             },
                         },
-                        "p2": {
-                            "description": "no footprint override",
-                        },
-                    },
-                },
-            ],
+                    ],
+                }
+            }
         }
         cfg_path = tmp_path / "test_footprint_profile.yml"
         import yaml as _yaml
@@ -650,38 +689,46 @@ class TestFootprintParsing:
         reader = ConfigReader(str(cfg_path))
 
         # Check effective for p1
-        eff1 = reader.get_effective_service_definition("svc", "p1", None)
+        eff1 = reader.get_effective_service_definition(
+            "svc", "p1", None, realm="default"
+        )
         assert eff1.footprint.run_time == 60
         assert eff1.footprint.run_script == "base.sh"
 
         # Check effective for p2
-        eff2 = reader.get_effective_service_definition("svc", "p2", None)
+        eff2 = reader.get_effective_service_definition(
+            "svc", "p2", None, realm="default"
+        )
         assert eff2.footprint.run_time == 30
         assert eff2.footprint.run_script == "base.sh"
 
     def test_footprint_parsing_variety(self, tmp_path):
         """Verify that footprint is extracted for varieties."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "varieties": {
-                        "v1": {
-                            "footprint": {
-                                "run-script": "var.sh",
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "varieties": {
+                                "v1": {
+                                    "footprint": {
+                                        "run-script": "var.sh",
+                                    },
+                                },
                             },
                         },
-                    },
-                },
-            ],
+                    ],
+                }
+            }
         }
         cfg_path = tmp_path / "test_footprint_variety.yml"
         import yaml as _yaml
 
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
-        svc = reader.get_service_by_name("svc")
+        svc = reader.get_service_by_name("svc", "default")
 
         v1 = svc.varieties["v1"]
         assert v1.footprint.run_script == "var.sh"
@@ -694,26 +741,36 @@ class TestEffectiveServiceDefinition:
     def test_merge_precedence(self, tmp_path):
         """Verify merge precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "image": "base-img",
-                    "environment": {"K1": "base-v1", "K2": "base-v2"},
-                    "varieties": {
-                        "v1": {
-                            "image": "var-img",
-                            "environment": {"K2": "var-v2", "K3": "var-v3"},
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "image": "base-img",
+                            "environment": {"K1": "base-v1", "K2": "base-v2"},
+                            "varieties": {
+                                "v1": {
+                                    "image": "var-img",
+                                    "environment": {
+                                        "K2": "var-v2",
+                                        "K3": "var-v3",
+                                    },
+                                }
+                            },
+                            "profiles": {
+                                "p1": {
+                                    "image": "prof-img",
+                                    "environment": {
+                                        "K3": "prof-v3",
+                                        "K4": "prof-v4",
+                                    },
+                                }
+                            },
                         }
-                    },
-                    "profiles": {
-                        "p1": {
-                            "image": "prof-img",
-                            "environment": {"K3": "prof-v3", "K4": "prof-v4"},
-                        }
-                    },
+                    ]
                 }
-            ]
+            }
         }
         cfg_path = tmp_path / "test_effective.yml"
         import yaml as _yaml
@@ -721,7 +778,9 @@ class TestEffectiveServiceDefinition:
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
 
-        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+        eff = reader.get_effective_service_definition(
+            "svc", "p1", "v1", realm="default"
+        )
 
         # image: Profile > Variety > Base
         assert eff.image == "prof-img"
@@ -734,23 +793,33 @@ class TestEffectiveServiceDefinition:
     def test_property_merging(self, tmp_path):
         """Verify property merging precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "properties": {"P1": "base-p1", "P2": "base-p2"},
-                    "varieties": {
-                        "v1": {
-                            "properties": {"P2": "var-p2", "P3": "var-p3"},
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "properties": {"P1": "base-p1", "P2": "base-p2"},
+                            "varieties": {
+                                "v1": {
+                                    "properties": {
+                                        "P2": "var-p2",
+                                        "P3": "var-p3",
+                                    },
+                                }
+                            },
+                            "profiles": {
+                                "p1": {
+                                    "properties": {
+                                        "P3": "prof-p3",
+                                        "P4": "prof-p4",
+                                    },
+                                }
+                            },
                         }
-                    },
-                    "profiles": {
-                        "p1": {
-                            "properties": {"P3": "prof-p3", "P4": "prof-p4"},
-                        }
-                    },
+                    ]
                 }
-            ]
+            }
         }
         cfg_path = tmp_path / "test_properties.yml"
         import yaml as _yaml
@@ -758,7 +827,9 @@ class TestEffectiveServiceDefinition:
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
 
-        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+        eff = reader.get_effective_service_definition(
+            "svc", "p1", "v1", realm="default"
+        )
 
         # properties: merged, Profile > Variety > Base
         assert eff.properties["P1"] == "base-p1"
@@ -769,19 +840,33 @@ class TestEffectiveServiceDefinition:
     def test_volume_merging(self, tmp_path):
         """Verify volume merging by target precedence."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "volumes": ["/host1:/t1:ro", "/host2:/t2:rw"],
-                    "varieties": {
-                        "v1": {"volumes": ["/host3:/t2:ro", "/host4:/t3:rw"]}
-                    },
-                    "profiles": {
-                        "p1": {"volumes": ["/host5:/t1:rw", "/host6:/t4:ro"]}
-                    },
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "volumes": ["/host1:/t1:ro", "/host2:/t2:rw"],
+                            "varieties": {
+                                "v1": {
+                                    "volumes": [
+                                        "/host3:/t2:ro",
+                                        "/host4:/t3:rw",
+                                    ]
+                                }
+                            },
+                            "profiles": {
+                                "p1": {
+                                    "volumes": [
+                                        "/host5:/t1:rw",
+                                        "/host6:/t4:ro",
+                                    ]
+                                }
+                            },
+                        }
+                    ]
                 }
-            ]
+            }
         }
         cfg_path = tmp_path / "test_vols.yml"
         import yaml as _yaml
@@ -789,7 +874,9 @@ class TestEffectiveServiceDefinition:
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
 
-        eff = reader.get_effective_service_definition("svc", "p1", "v1")
+        eff = reader.get_effective_service_definition(
+            "svc", "p1", "v1", realm="default"
+        )
 
         # /t1: Profile overrides Base
         # /t2: Variety overrides Base
@@ -807,18 +894,22 @@ class TestEffectiveServiceDefinition:
     def test_network_merging(self, tmp_path):
         """Verify network merging precedence: Profile > Variety > Base."""
         cfg = {
-            "services": [
-                {
-                    "name": "svc",
-                    "type": "container",
-                    "networks": ["base-net"],
-                    "varieties": {"v1": {"networks": ["var-net"]}},
-                    "profiles": {"p1": {"networks": ["prof-net"]}},
-                    "profiles_no_override": {
-                        "p2": {"description": "no networks override"}
-                    },
+            "realms": {
+                "default": {
+                    "service-definitions": [
+                        {
+                            "name": "svc",
+                            "type": "container",
+                            "networks": ["base-net"],
+                            "varieties": {"v1": {"networks": ["var-net"]}},
+                            "profiles": {"p1": {"networks": ["prof-net"]}},
+                            "profiles_no_override": {
+                                "p2": {"description": "no networks override"}
+                            },
+                        }
+                    ]
                 }
-            ]
+            }
         }
         cfg_path = tmp_path / "test_net_merge.yml"
         import yaml as _yaml
@@ -827,13 +918,19 @@ class TestEffectiveServiceDefinition:
         reader = ConfigReader(str(cfg_path))
 
         # Profile > Variety > Base
-        eff1 = reader.get_effective_service_definition("svc", "p1", "v1")
+        eff1 = reader.get_effective_service_definition(
+            "svc", "p1", "v1", realm="default"
+        )
         assert eff1.networks == ["prof-net"]
 
         # Variety > Base
-        eff2 = reader.get_effective_service_definition("svc", None, "v1")
+        eff2 = reader.get_effective_service_definition(
+            "svc", None, "v1", realm="default"
+        )
         assert eff2.networks == ["var-net"]
 
         # Base only
-        eff3 = reader.get_effective_service_definition("svc", None, None)
+        eff3 = reader.get_effective_service_definition(
+            "svc", None, None, realm="default"
+        )
         assert eff3.networks == ["base-net"]

@@ -128,6 +128,7 @@ def get_service_launch_logs(
     port: int = 8000,
     profile: str | None = None,
     variety: str | None = None,
+    realm: str = "default",
     top: int | None = None,
     last: int | None = None,
     log_type: str = "container",
@@ -135,7 +136,7 @@ def get_service_launch_logs(
 ) -> dict[str, Any]:
     """Call the provisioner service launch logs endpoint."""
     url = f"http://localhost:{port}/srv/services/launch-logs/{service_name}/"
-    params = {}
+    params = {"realm": realm}
     if profile:
         params["profile"] = profile
     if variety:
@@ -162,13 +163,14 @@ def get_service_logs(
     port: int = 8000,
     profile: str | None = None,
     variety: str | None = None,
+    realm: str = "default",
     top: int | None = None,
     last: int | None = None,
     system_key: str | None = None,
 ) -> dict[str, Any]:
     """Call the provisioner service logs endpoint."""
     url = f"http://localhost:{port}/srv/services/logs/{service_name}/"
-    params = {}
+    params = {"realm": realm}
     if profile:
         params["profile"] = profile
     if variety:
@@ -193,6 +195,7 @@ def get_footprint_logs(
     port: int = 8000,
     profile: str | None = None,
     variety: str | None = None,
+    realm: str = "default",
     top: int | None = None,
     last: int | None = None,
     log_type: str = "container",
@@ -203,7 +206,7 @@ def get_footprint_logs(
         f"http://localhost:{port}/srv/services/footprint-logs/"
         f"{log_type}/{service_name}/"
     )
-    params = {}
+    params = {"realm": realm}
     if profile:
         params["profile"] = profile
     if variety:

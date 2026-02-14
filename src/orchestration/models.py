@@ -6,11 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
 # ============================================================================
 # Resource Models
 # ============================================================================
-
-
 class ResourceType(str, Enum):
     GPU = "gpu"
     CPU = "cpu"
@@ -29,13 +28,13 @@ class Resource(BaseModel):
 
 class Network(BaseModel):
     name: str
+    type: str
+    realm: str = "default"
 
 
 # ============================================================================
 # Host Models
 # ============================================================================
-
-
 class Host(BaseModel):
     name: str
     ip: str
@@ -45,8 +44,6 @@ class Host(BaseModel):
 # ============================================================================
 # Footprint Models
 # ============================================================================
-
-
 class FootprintConfig(BaseModel):
     run_time: int | None = Field(default=None, alias="run-time")
     run_script: str | None = Field(default=None, alias="run-script")
@@ -54,6 +51,7 @@ class FootprintConfig(BaseModel):
 
 class ConfiguredServiceIdentifier(BaseModel):
     service_name: str
+    realm: str = "default"
     profile: str | None = None
     variety: str | None = None
 
@@ -80,8 +78,6 @@ class FootprintLogLines(BaseModel):
 # ============================================================================
 # Service Definition Models (Templates)
 # ============================================================================
-
-
 class ServiceType(str, Enum):
     """Common service type identifiers used across the system.
 
@@ -128,11 +124,12 @@ class ServiceDefinitionVariety(BaseModel):
 
 class ServiceDefinition(BaseModel):
     service_name: str
+    realm: str = "default"
     type: str | ServiceType
     description: str | None = None
 
-    # image is required for CONTAINER services, but optional for SOURCE_FILES
-    # and API services.
+    # image is required for CONTAINER service_definitions, but optional for
+    # SOURCE_FILES and API service_definitions.
     image: str | None = ""
 
     depends_on: list[str] | None = Field(default_factory=list)
@@ -161,6 +158,7 @@ class ServiceDefinition(BaseModel):
 
 
 class EffectiveServiceDefinition(BaseModel):
+    realm: str = ""
     image: str = ""
     environment: dict[str, Any] = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
@@ -176,19 +174,6 @@ class EffectiveServiceDefinition(BaseModel):
 # ============================================================================
 # Service Usage Models (Runtime)
 # ============================================================================
-# class SystemUsageDelta(BaseModel):
-#     cpu_cores: float = 0.0
-#     memory_gb: float = 0.0
-#     vram_gb: float = 0.0
-
-
-# class ServiceInstanceUsage(BaseModel):
-#     service_name: str
-#     profile: str | None
-#     variety: str | None
-#     usage: SystemUsageDelta
-
-
 class ServiceInstanceUsage(BaseModel):
     cpu_cores: float = 0.0
     memory_gb: float = 0.0
@@ -212,19 +197,21 @@ class ServiceStatus(str, Enum):
 
 
 class Service(BaseModel):
-    """Represents an instantiated service in a mode"""
+    """Represents an instantiated service"""
 
     name: str
     service_name: str  # Reference to ServiceDefinition
+    realm: str = "default"
     host: str
     parameters: dict[str, Any] | None = None
 
 
 class ServiceInformation(BaseModel):
-    """Information about a service"""
+    """Information about a running service"""
 
     name: str
     service: str
+    realm: str = "default"
     variety: str | None = None
     profile: str | None = None
     status: ServiceStatus | None = None
@@ -233,10 +220,19 @@ class ServiceInformation(BaseModel):
 
 
 # ============================================================================
+# Realm Models
+# ============================================================================
+class Realm(BaseModel):
+    name: str
+    service_definitions: list[ServiceDefinition] | None = Field(
+        default_factory=list
+    )
+    networks: list[Network] | None = Field(default_factory=list)
+
+
+# ============================================================================
 # Cache Models
 # ============================================================================
-
-
 class Cache(BaseModel):
     type: str
     parameters: dict[str, Any] | None = None
@@ -245,28 +241,28 @@ class Cache(BaseModel):
 # ============================================================================
 # Provisioner Models
 # ============================================================================
-
-
 class Provisioner(BaseModel):
     name: str
     host: str  # Reference to Host name
     cache: Cache | None = None
 
 
-class ProvisionerState(BaseModel):
-    provisioner: str
-    available_resources: list[Resource]
-    services: list[Service] | None
+# class ProvisionerState(BaseModel):
+#     provisioner: str
+#     available_resources: list[Resource]
+#     services: list[Service] | None
 
 
 # ============================================================================
 # Root Configuration Model
 # ============================================================================
-
-
 class OzwaldConfig(BaseModel):
     hosts: list[Host] = Field(default_factory=list)
-    services: list[ServiceDefinition] = Field(default_factory=list)
+    realms: dict[str, Realm] = Field(default_factory=dict)
+    service_definitions: list[ServiceDefinition] = Field(
+        default_factory=list,
+        alias="service-definitions",
+    )
     provisioners: list[Provisioner] = Field(default_factory=list)
     networks: list[Network] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
@@ -274,22 +270,10 @@ class OzwaldConfig(BaseModel):
 
 
 # ============================================================================
-# Legacy Model (keeping for backward compatibility)
-# ============================================================================
-
-
-class ProvisionerProfile(BaseModel):
-    name: str
-    services: list[Service]
-
-
-# ============================================================================
 # DSPy/LLM Pipeline Enhancement Models
 # ============================================================================
-
-
 class ResourceConstraints(BaseModel):
-    """Resource requirements and constraints for services"""
+    """Resource requirements and constraints for service_definitions"""
 
     gpu_memory_required: str | None = None
     cpu_memory_required: str | None = None
@@ -298,7 +282,7 @@ class ResourceConstraints(BaseModel):
 
 
 class HealthCheck(BaseModel):
-    """Health check configuration for services"""
+    """Health check configuration for service_definitions"""
 
     endpoint: str | None = None
     interval_seconds: int = 30
@@ -307,7 +291,7 @@ class HealthCheck(BaseModel):
 
 
 class ServiceDependency(BaseModel):
-    """Defines dependencies between services"""
+    """Defines dependencies between service_definitions"""
 
     service_name: str
     required: bool = True

@@ -91,7 +91,9 @@ class TestFootprintLogs:
         mock_svc.varieties = {"gpu": {}}
 
         mock_provisioner = mocker.Mock()
-        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mock_provisioner.config_reader.get_service_by_name.return_value = (
+            mock_svc
+        )
         mocker.patch(
             "api.provisioner.SystemProvisioner.singleton",
             return_value=mock_provisioner,
@@ -117,7 +119,7 @@ class TestFootprintLogs:
 
         # Check command
         cmd = mock_run.call_args[0][0]
-        assert "service-footprinter--test-service--prod--gpu" in cmd
+        assert "ozsvc--default--footprinter--test-service--prod--gpu" in cmd
 
     def test_get_footprint_logs_validation_error(
         self,
@@ -131,7 +133,9 @@ class TestFootprintLogs:
         mock_svc.varieties = {}
 
         mock_provisioner = mocker.Mock()
-        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mock_provisioner.config_reader.get_service_by_name.return_value = (
+            mock_svc
+        )
         mocker.patch(
             "api.provisioner.SystemProvisioner.singleton",
             return_value=mock_provisioner,
@@ -152,7 +156,9 @@ class TestFootprintLogs:
         mock_svc.varieties = {}
 
         mock_provisioner = mocker.Mock()
-        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mock_provisioner.config_reader.get_service_by_name.return_value = (
+            mock_svc
+        )
         mocker.patch(
             "api.provisioner.SystemProvisioner.singleton",
             return_value=mock_provisioner,
@@ -196,7 +202,9 @@ class TestFootprintLogs:
         mock_svc.varieties = {}
 
         mock_provisioner = mocker.Mock()
-        mock_provisioner.get_configured_services.return_value = [mock_svc]
+        mock_provisioner.config_reader.get_service_by_name.return_value = (
+            mock_svc
+        )
         mock_provisioner.get_cache.return_value = {}
         mocker.patch(
             "api.provisioner.SystemProvisioner.singleton",

@@ -1,7 +1,7 @@
 """FastAPI application for the Ozwald Provisioner service.
 
-This API allows an orchestrator to control which services are provisioned
-and provides information about available resources.
+This API allows an orchestrator to control which service_definitions
+are provisioned and provides information about available resources.
 """
 
 from __future__ import annotations
@@ -301,6 +301,7 @@ async def post_footprint_request(
 )
 async def get_service_launch_logs(
     service_name: str,
+    realm: str = "default",
     profile: str | None = None,
     variety: str | None = None,
     top: int | None = None,
@@ -309,6 +310,7 @@ async def get_service_launch_logs(
     """Retrieve cached runner logs for the service launch."""
     return await _get_service_runner_logs(
         service_name=service_name,
+        realm=realm,
         profile=profile,
         variety=variety,
         top=top,
@@ -324,6 +326,7 @@ async def get_service_launch_logs(
 )
 async def get_service_logs(
     service_name: str,
+    realm: str = "default",
     profile: str | None = None,
     variety: str | None = None,
     top: int | None = None,
@@ -332,6 +335,7 @@ async def get_service_logs(
     """Retrieve cached runner logs for the service."""
     return await _get_service_runner_logs(
         service_name=service_name,
+        realm=realm,
         profile=profile,
         variety=variety,
         top=top,
@@ -341,6 +345,7 @@ async def get_service_logs(
 
 async def _get_service_runner_logs(
     service_name: str,
+    realm: str = "default",
     profile: str | None = None,
     variety: str | None = None,
     top: int | None = None,
@@ -349,21 +354,23 @@ async def _get_service_runner_logs(
     provisioner = SystemProvisioner.singleton()
     cache = provisioner.get_cache()
 
-    # Try to resolve container name from active services
+    # Try to resolve container name from active service_definitions
     active_cache = ActiveServicesCache(cache)
     active_services = active_cache.get_services()
 
     instance_name = service_name
+    found_realm = realm
     for s in active_services:
-        if s.service == service_name:
+        if s.service == service_name and s.realm == realm:
             if profile and s.profile != profile:
                 continue
             if variety and s.variety != variety:
                 continue
             instance_name = s.name
+            found_realm = s.realm
             break
 
-    container_name = f"service-{instance_name}"
+    container_name = f"ozsvc--{found_realm}--{instance_name}"
     runner_logs_cache = RunnerLogsCache(cache)
     lines = runner_logs_cache.get_log_lines(container_name)
 
@@ -391,6 +398,7 @@ async def _get_service_runner_logs(
 )
 async def get_footprint_container_logs(
     service_name: str,
+    realm: str = "default",
     profile: str | None = None,
     variety: str | None = None,
     top: int | None = None,
@@ -399,14 +407,14 @@ async def get_footprint_container_logs(
 ) -> FootprintLogLines:
     """Retrieve docker logs for the footprint run of a service."""
     provisioner = SystemProvisioner.singleton()
-    services = provisioner.get_configured_services()
-    service_def = next(
-        (s for s in services if s.service_name == service_name), None
+    service_def = provisioner.config_reader.get_service_by_name(
+        service_name,
+        realm,
     )
     if not service_def:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Service {service_name} not found",
+            detail=f"Service {service_name} not found in realm {realm}",
         )
 
     # Validation
@@ -448,7 +456,7 @@ async def get_footprint_container_logs(
     # ozwald-<image-name>
 
     inst_name = f"footprinter--{service_name}--{profile}--{variety}"
-    container_name = f"service-{inst_name}"
+    container_name = f"ozsvc--{realm}--{inst_name}"
 
     cmd = ["docker", "logs"]
     if last is not None:
@@ -507,6 +515,7 @@ async def get_footprint_container_logs(
 )
 async def get_footprint_runner_logs(
     service_name: str,
+    realm: str = "default",
     profile: str | None = None,
     variety: str | None = None,
     top: int | None = None,
@@ -514,17 +523,20 @@ async def get_footprint_runner_logs(
 ) -> FootprintLogLines:
     """Retrieve cached runner logs for the footprint run of a service."""
 
-    logger.info(f"Retrieving footprint runner logs for service: {service_name}")
+    logger.info(
+        f"Retrieving footprint runner logs for service: {service_name} "
+        f"in realm: {realm}"
+    )
 
     provisioner = SystemProvisioner.singleton()
-    services = provisioner.get_configured_services()
-    service_def = next(
-        (s for s in services if s.service_name == service_name), None
+    service_def = provisioner.config_reader.get_service_by_name(
+        service_name,
+        realm,
     )
     if not service_def:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Service {service_name} not found",
+            detail=f"Service {service_name} not found in realm {realm}",
         )
 
     # Validation
@@ -540,7 +552,7 @@ async def get_footprint_runner_logs(
         )
 
     inst_name = f"footprinter--{service_name}--{profile}--{variety}"
-    container_name = f"service-{inst_name}"
+    container_name = f"ozsvc--{realm}--{inst_name}"
 
     cache = provisioner.get_cache()
     runner_logs_cache = RunnerLogsCache(cache)

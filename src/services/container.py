@@ -67,8 +67,32 @@ class ContainerService(BaseProvisionableService):
                 si.service,
                 si.profile,
                 si.variety,
+                realm=si.realm,
             )
         return self._effective_def
+
+    @staticmethod
+    def effective_network_name(network: Any) -> str:
+        """Return the effective network name for Docker."""
+        # Use Any for network to avoid circular import if needed,
+        # but Network is already imported in orchestration.models
+        return f"oznet--{network.realm}--{network.name}"
+
+    @classmethod
+    def init_service(cls):
+        """Initialize the container service by creating all defined networks."""
+        from config.reader import SystemConfigReader
+
+        reader = SystemConfigReader.singleton()
+        for network in reader.defined_networks:
+            eff_name = cls.effective_network_name(network)
+            logger.info(f"Ensuring network {eff_name} exists")
+            subprocess.run(
+                ["docker", "network", "create", eff_name],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
 
     # --- Lifecycle: start/stop container ---
     def start(self):
@@ -239,17 +263,20 @@ class ContainerService(BaseProvisionableService):
                     networks = self.effective_definition.networks
                     if len(networks) > 1:
                         target_id = container_id or container_name
-                        for network in networks[1:]:
+                        for network_name in networks[1:]:
+                            eff_net_name = self._get_effective_network_name(
+                                network_name
+                            )
                             connect_cmd = [
                                 "docker",
                                 "network",
                                 "connect",
-                                network,
+                                eff_net_name,
                                 target_id,
                             ]
                             logger.info(
                                 f"Connecting container {target_id} to "
-                                f"network {network}",
+                                f"network {eff_net_name}",
                             )
                             subprocess.run(connect_cmd, check=True)
                     return
@@ -345,7 +372,7 @@ class ContainerService(BaseProvisionableService):
             return []
 
     def get_container_name(self):
-        return f"service-{self._service_info.name}"
+        return f"ozsvc--{self._service_info.realm}--{self._service_info.name}"
 
     def get_container_options__standard(self) -> list[str]:
         return ["--name", self.get_container_name()]
@@ -397,8 +424,22 @@ class ContainerService(BaseProvisionableService):
     def get_container_options__network(self) -> list[str]:
         networks = self.effective_definition.networks
         if networks:
-            return ["--network", networks[0]]
+            eff_net_name = self._get_effective_network_name(networks[0])
+            return ["--network", eff_net_name]
         return []
+
+    def _get_effective_network_name(self, network_name: str) -> str:
+        from config.reader import SystemConfigReader
+
+        reader = SystemConfigReader.singleton()
+        network = reader.get_network_by_name(
+            network_name,
+            self._service_info.realm,
+        )
+        if network:
+            return self.effective_network_name(network)
+        # Fallback to namespaced oznet name if not explicitly in config
+        return f"oznet--{self._service_info.realm}--{network_name}"
 
     def get_container_start_command(self, image: str) -> list[str]:
         docker_cmd = ["docker", "run"]

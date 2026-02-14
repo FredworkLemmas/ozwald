@@ -8,6 +8,7 @@ from typing import Iterator, List
 
 import pytest
 import redis
+import yaml
 from dotenv import load_dotenv
 
 from orchestration.models import Cache, ServiceStatus
@@ -19,7 +20,26 @@ external_redis_port = os.environ.get("DEFAULT_PROVISIONER_REDIS_PORT")
 
 
 def _redis_connection_parameters() -> dict:
-    return {"host": "localhost", "port": external_redis_port, "db": 0}
+    repo_root = Path(__file__).resolve().parents[3]
+    settings_path = repo_root / "dev" / "resources" / "settings.yml"
+    with settings_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    name = os.environ.get("OZWALD_PROVISIONER", "jamma")
+    provs = cfg.get("provisioners", [])
+    cache_params = {}
+    for prov in provs:
+        if prov.get("name") == name:
+            cache_params = (prov.get("cache") or {}).get("parameters", {})
+            break
+
+    port_env = (
+        os.environ.get("OZWALD_PROVISIONER_REDIS_PORT")
+        or os.environ.get("DEFAULT_PROVISIONER_REDIS_PORT")
+        or "6479"
+    )
+    db = cache_params.get("db", 0)
+    return {"host": "localhost", "port": int(port_env), "db": db}
 
 
 def _docker_available() -> bool:
@@ -152,7 +172,7 @@ def docker_prereq():
     # Ensure simple_test_1 image exists (build if needed)
     repo_root = Path(__file__).resolve().parents[3]
     dockerfile = repo_root / "dockerfiles" / "Dockerfile.simple_test_1"
-    _ensure_image("simple_test_1", str(dockerfile))
+    _ensure_image("ozwald-simple_test_1", str(dockerfile))
 
 
 @pytest.fixture(scope="module")
@@ -268,8 +288,8 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
     profile = None
     name_a = "it-simple_test_1-1"
     name_b = "it-simple_test_1-2"
-    container_a = f"service-{name_a}"
-    container_b = f"service-{name_b}"
+    container_a = f"ozsvc--default--{name_a}"
+    container_b = f"ozsvc--default--{name_b}"
 
     cache_host, cache_port, cache_db = _get_cache_params_from_env()
 
@@ -337,7 +357,7 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
     _wait_for(
         both_available,
         timeout=45,
-        description="both services AVAILABLE in cache",
+        description="both service_definitions AVAILABLE in cache",
     )
 
     logs_b = _container_logs(container_b, tail=20)
@@ -387,5 +407,5 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
     _wait_for(
         cache_empty,
         timeout=45,
-        description="active services cache empty",
+        description="active service_definitions cache empty",
     )

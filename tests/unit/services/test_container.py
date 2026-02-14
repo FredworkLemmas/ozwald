@@ -121,6 +121,18 @@ class TestContainerServiceHealth:
             staticmethod(fake_singleton),
         )
 
+        from config.reader import SystemConfigReader
+
+        class MockReader:
+            def get_network_by_name(self, name, realm):
+                return None
+
+        monkeypatch.setattr(
+            SystemConfigReader,
+            "singleton",
+            staticmethod(lambda: MockReader()),
+        )
+
     def test_start_waits_for_healthy(self, monkeypatch):
         svc = FakeContainerService(_si("svc1", ServiceStatus.STARTING))
 
@@ -235,6 +247,18 @@ class TestContainerServiceNetworks:
             staticmethod(fake_singleton),
         )
 
+        from config.reader import SystemConfigReader
+
+        class MockReader:
+            def get_network_by_name(self, name, realm):
+                return None
+
+        monkeypatch.setattr(
+            SystemConfigReader,
+            "singleton",
+            staticmethod(lambda: MockReader()),
+        )
+
     def test_start_with_multiple_networks(self, monkeypatch):
         """Verify that docker run uses the first network and additional
         networks are connected via docker network connect.
@@ -297,8 +321,11 @@ class TestContainerServiceNetworks:
         # calling it)
         start_cmd = cs.get_container_start_command("test-image")
         assert "--network" in start_cmd
-        assert "net1" in start_cmd
-        assert start_cmd[start_cmd.index("--network") + 1] == "net1"
+        assert "oznet--default--net1" in start_cmd
+        assert (
+            start_cmd[start_cmd.index("--network") + 1]
+            == "oznet--default--net1"
+        )
 
         # Check docker network connect calls
         connect_calls = [
@@ -309,14 +336,14 @@ class TestContainerServiceNetworks:
             "docker",
             "network",
             "connect",
-            "net2",
+            "oznet--default--net2",
             "abc123",
         ]
         assert connect_calls[1] == [
             "docker",
             "network",
             "connect",
-            "net3",
+            "oznet--default--net3",
             "abc123",
         ]
 
@@ -376,11 +403,11 @@ class TestContainerServiceEffectiveFields:
 
         # Mock SystemConfigReader
         class DummyReader:
-            def get_service_by_name(self, name):
+            def get_service_by_name(self, name, realm):
                 return svc_def
 
             def get_effective_service_definition(
-                self, service, profile, variety
+                self, service, profile, variety, realm=None
             ):
                 # We can use the real implementation logic by calling it
                 # on a dummy instance or just mocking the result.
@@ -443,7 +470,7 @@ class TestContainerServiceEffectiveFields:
         monkeypatch.setattr(
             mock_reader,
             "get_effective_service_definition",
-            lambda s, p, v: expected_eff,
+            lambda s, p, v, realm=None: expected_eff,
         )
 
         eff = cs.effective_definition

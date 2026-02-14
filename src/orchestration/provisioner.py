@@ -109,8 +109,8 @@ class SystemProvisioner:
         return _system_provisioner
 
     def get_configured_services(self) -> List[ServiceDefinition]:
-        """Get all services configured for this provisioner"""
-        return self.config_reader.services
+        """Get all service_definitions configured for this provisioner"""
+        return self.config_reader.service_definitions
 
     def get_active_services(self) -> List[ServiceInformation]:
         """Get all currently active services"""
@@ -320,6 +320,12 @@ class SystemProvisioner:
 
         return True
 
+    def _init_services(self) -> None:
+        """Call init_service class method for each service class."""
+        for svc_cls in BaseProvisionableService.get_service_classes():
+            logger.info("Initializing service class: %s", svc_cls.__name__)
+            svc_cls.init_service()
+
     def _get_service_class_from_service_info(
         self, svc_info: ServiceInformation
     ) -> Optional[Type["BaseProvisionableService"]]:
@@ -327,6 +333,7 @@ class SystemProvisioner:
         # service type
         service_def = self.config_reader.get_service_by_name(
             svc_info.service,
+            svc_info.realm,
         )
         if not service_def:
             logger.error(
@@ -491,7 +498,7 @@ class SystemProvisioner:
         updated = True
 
         try:
-            # Some services may not implement stop yet
+            # Some service_definitions may not implement stop yet
             stop_fn = getattr(
                 service_instance,
                 "stop",
@@ -659,6 +666,9 @@ class SystemProvisioner:
         if not self._validate_footprint_data_file_is_writable():
             return
 
+        # Initialize services
+        self._init_services()
+
         # Graceful shutdown handling
         running = True
 
@@ -704,13 +714,17 @@ class SystemProvisioner:
         Idempotent: skips if already mounted.
         """
         vols = getattr(self.config_reader, "volumes", {}) or {}
-        if not vols:
+        nfs_vols = {
+            name: spec
+            for name, spec in vols.items()
+            if spec.get("type") == "nfs"
+        }
+        if not nfs_vols:
             return
+
         mount_root = os.environ.get("OZWALD_NFS_MOUNTS", "/exports")
         pathlib.Path(mount_root).mkdir(exist_ok=True, parents=True)
-        for name, spec in vols.items():
-            if spec.get("type") != "nfs":
-                continue
+        for name, spec in nfs_vols.items():
             server = spec.get("server")
             path = spec.get("path")
             opts = spec.get("options")
@@ -790,6 +804,7 @@ class SystemProvisioner:
                 ):
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         profile=profile,
                         variety=variety,
                     )
@@ -797,22 +812,25 @@ class SystemProvisioner:
                 for profile in service_def.profiles:
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         profile=profile,
                     )
             elif service_def.varieties:
                 for variety in service_def.varieties:
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         variety=variety,
                     )
             else:
                 yield ConfiguredServiceIdentifier(
                     service_name=service_def.service_name,
+                    realm=service_def.realm,
                 )
 
         targets: List[ConfiguredServiceIdentifier] = []
         if request.footprint_all_services:
-            for svc_def in self.config_reader.services:
+            for svc_def in self.config_reader.service_definitions:
                 for target in target_iterator(svc_def):
                     targets.append(target)
 
@@ -879,6 +897,7 @@ class SystemProvisioner:
         tmp_svc_info = ServiceInformation(
             name="temp",
             service=target.service_name,
+            realm=target.realm,
             profile=target.profile,
             variety=target.variety,
             status=ServiceStatus.STARTING,
@@ -904,6 +923,7 @@ class SystemProvisioner:
         svc_info = ServiceInformation(
             name=inst_name,
             service=target.service_name,
+            realm=target.realm,
             profile=target.profile,
             variety=target.variety,
             status=ServiceStatus.STARTING,
@@ -926,6 +946,7 @@ class SystemProvisioner:
             target.service_name,
             target.profile,
             target.variety,
+            realm=target.realm,
         )
         footprint_config = effective_service_def.footprint
         time.sleep(footprint_config.run_time)
@@ -1075,6 +1096,7 @@ class SystemProvisioner:
         # read service definition
         service_def = self.config_reader.get_service_by_name(
             service_info.service,
+            service_info.realm,
         )
         if not service_def:
             raise ValueError(
@@ -1087,6 +1109,7 @@ class SystemProvisioner:
             service_def,
             service_info.profile,
             service_info.variety,
+            realm=service_info.realm,
         )
         service_info.properties = effective_def.properties
 

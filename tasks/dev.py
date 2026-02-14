@@ -114,7 +114,7 @@ def show_host_resources(c, use_api=False, port=DEFAULT_PROVISIONER_PORT):
 
 @task(namespace="dev", name="build-containers")
 def build_containers(c, name=None):
-    """Build Docker images by delegating to util.services."""
+    """Build Docker images by delegating to util.service_definitions."""
     svc.build_containers(name=name)
 
 
@@ -151,11 +151,6 @@ def _get_installed_gpu_drivers(c):
 PROVISIONER_NETWORK = "provisioner_network"
 
 
-def _ensure_provisioner_network(c):
-    """Deprecated: kept for compatibility. Delegates to util.services."""
-    svc.ensure_provisioner_network()
-
-
 @task(namespace="dev", name="start-provisioner-network")
 def start_provisioner_network(c):
     """Create the shared docker network for provisioner containers."""
@@ -170,13 +165,13 @@ def stop_provisioner_network(c):
 
 @task(namespace="dev", name="start-provisioner")
 def start_provisioner_api(c, port=DEFAULT_PROVISIONER_PORT, restart=True):
-    """Start the provisioner-api container via util.services."""
+    """Start the provisioner-api container via util.service_definitions."""
     svc.start_provisioner_api(port=port, restart=restart)
 
 
 @task(namespace="dev", name="stop-provisioner-api")
 def stop_provisioner_api(c):
-    """Stop the provisioner-api container via util.services."""
+    """Stop the provisioner-api container via util.service_definitions."""
     svc.stop_provisioner_api()
 
 
@@ -276,7 +271,7 @@ def list_configured_services(c, port=DEFAULT_PROVISIONER_PORT):
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)
-        print(f"Total services: {len(services_data)}")
+        print(f"Total service_definitions: {len(services_data)}")
         print("=" * 80 + "\n")
 
     except requests.exceptions.RequestException as e:
@@ -441,7 +436,7 @@ def list_active_services(c, port=DEFAULT_PROVISIONER_PORT):
                             print(f"        {key}: {value}")
 
         print("\n" + "=" * 80)
-        print(f"Total services: {len(services_data)}")
+        print(f"Total service_definitions: {len(services_data)}")
         print("=" * 80 + "\n")
 
     except requests.exceptions.RequestException as e:
@@ -528,7 +523,9 @@ def update_services(c, service, port=DEFAULT_PROVISIONER_PORT):
             print("=" * 80)
             msg = result_data.get("message", "Service update request accepted")
             print(f"\n{msg}")
-            print(f"\nRequested services ({len(services_to_update)}):")
+            print(
+                f"\nRequested service_definitions ({len(services_to_update)}):"
+            )
             for i, service in enumerate(services_to_update, 1):
                 profile_info = f"@{service.profile}" if service.profile else ""
                 print(
@@ -561,7 +558,7 @@ def _docker_group_id():
 
 @task(namespace="dev", name="start-provisioner-backend")
 def start_provisioner_backend(c, restart=True):
-    """Start the provisioner-backend container via util.services."""
+    """Start the provisioner-backend container via util.service_definitions."""
     try:
         svc.validate_footprint_data_env()
     except RuntimeError as e:
@@ -576,7 +573,9 @@ def start_provisioner_redis(
     port=DEFAULT_PROVISIONER_REDIS_PORT,
     restart=True,
 ):
-    """Start a Redis container for the provisioner via util.services."""
+    """
+    Start a Redis container for the provisioner via util.service_definitions.
+    """
     svc.start_provisioner_redis(port=port, restart=restart)
 
 
@@ -610,7 +609,7 @@ def start_provisioner(
     svc.ensure_provisioner_network()
     # Start Redis first so backend and API can connect
     svc.start_provisioner_redis(port=redis_port, restart=restart)
-    # Then the backend worker/services
+    # Then the backend worker/service_definitions
     svc.start_provisioner_backend(
         restart=restart,
         mount_source_dir=mount_source_dir,
@@ -626,13 +625,13 @@ def start_provisioner(
 
 @task(namespace="dev", name="stop-provisioner-backend")
 def stop_provisioner_backend(c):
-    """Stop the provisioner-backend container via util.services."""
+    """Stop the provisioner-backend container via util.service_definitions."""
     svc.stop_provisioner_backend()
 
 
 @task(namespace="dev", name="stop-provisioner-redis")
 def stop_provisioner_redis(c):
-    """Stop the provisioner-redis container via util.services."""
+    """Stop the provisioner-redis container via util.service_definitions."""
     svc.stop_provisioner_redis()
 
 
