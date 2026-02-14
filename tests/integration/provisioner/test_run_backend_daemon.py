@@ -267,8 +267,8 @@ def _update_services(service_updates: List[dict]):
     from orchestration.models import ServiceInformation
 
     objs = [ServiceInformation(**u) for u in service_updates]
-    ok = prov.update_services(objs)
-    assert ok, "update_services returned False"
+    ok = prov.update_active_services(objs)
+    assert ok, "update_active_services returned False"
 
 
 def test_run_backend_daemon_start_stop_two_instances_individually(

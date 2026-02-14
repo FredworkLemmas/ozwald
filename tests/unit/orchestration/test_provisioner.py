@@ -349,7 +349,7 @@ class TestUpdateServicesBehaviorEmptyList:
         b = _svc_info("svc-b", ServiceStatus.AVAILABLE)
         fake_cache._services = [a, b]
 
-        ok = prov.update_services([])
+        ok = prov.update_active_services([])
         assert ok
         assert fake_cache.set_calls, "expected cache write"
         persisted: list[ServiceInformation] = fake_cache.set_calls[-1]
@@ -363,7 +363,7 @@ class TestUpdateServicesBehaviorEmptyList:
         _prov_mod, prov, fake_cache = provisioner_env
 
         fake_cache._services = []
-        ok = prov.update_services([])
+        ok = prov.update_active_services([])
         assert ok
         assert fake_cache.set_calls
         assert fake_cache.set_calls[-1] == []
@@ -437,7 +437,7 @@ class TestRunBackendDaemonChecks:
         fake_cache._services = []
         fake_cache.raise_write_collision_once = True
 
-        ok = prov.update_services([])
+        ok = prov.update_active_services([])
         assert ok
         # Only the successful write is recorded
         assert len(fake_cache.set_calls) == 1
@@ -456,3 +456,114 @@ class TestInitServiceProperties:
 
         assert initialized.properties == {"resolved-prop": "val"}
         assert initialized.status == ServiceStatus.STARTING
+
+
+class TestSystemProvisionerPersistence:
+    def test_get_active_services_filtering(self, provisioner_env):
+        _, prov, fake_cache = provisioner_env
+
+        # Seed cache with mixed services
+        p1 = _svc_info("persistent-1", ServiceStatus.AVAILABLE)
+        p1.persistent = True
+        n1 = _svc_info("non-persistent-1", ServiceStatus.AVAILABLE)
+        n1.persistent = False
+
+        fake_cache._services = [p1, n1]
+
+        # All services
+        assert len(prov.get_active_services()) == 2
+        assert len(prov.get_active_services(persistent=None)) == 2
+
+        # Persistent only
+        persistent = prov.get_active_services(persistent=True)
+        assert len(persistent) == 1
+        assert persistent[0].name == "persistent-1"
+
+        # Non-persistent only
+        non_persistent = prov.get_active_services(persistent=False)
+        assert len(non_persistent) == 1
+        assert non_persistent[0].name == "non-persistent-1"
+
+    def test_update_active_services_validation(self, provisioner_env):
+        _, prov, _ = provisioner_env
+
+        p1 = _svc_info("p1", ServiceStatus.AVAILABLE)
+        p1.persistent = True
+        n1 = _svc_info("n1", ServiceStatus.AVAILABLE)
+        n1.persistent = False
+
+        # Expecting persistent=True but got non-persistent service
+        with pytest.raises(ValueError, match="is not persistent"):
+            prov.update_active_services([n1], persistent=True)
+
+        # Expecting persistent=False but got persistent service
+        with pytest.raises(ValueError, match="is persistent"):
+            prov.update_active_services([p1], persistent=False)
+
+    def test_selective_removal_persistent(self, provisioner_env):
+        _, prov, fake_cache = provisioner_env
+
+        p1 = _svc_info("p1", ServiceStatus.AVAILABLE)
+        p1.persistent = True
+        p2 = _svc_info("p2", ServiceStatus.AVAILABLE)
+        p2.persistent = True
+        n1 = _svc_info("n1", ServiceStatus.AVAILABLE)
+        n1.persistent = False
+
+        fake_cache._services = [p1, p2, n1]
+
+        # Update persistent services, omitting p2
+        # This should mark p2 as STOPPING but leave n1 alone
+        ok = prov.update_active_services([p1], persistent=True)
+        assert ok
+
+        persisted = fake_cache.set_calls[-1]
+
+        # n1 should still be AVAILABLE (unchanged)
+        # p1 should still be AVAILABLE (in update list)
+        # p2 should be STOPPING (omitted from update list but in scope)
+        names_to_status = {s.name: s.status for s in persisted}
+        assert names_to_status["p1"] == ServiceStatus.AVAILABLE
+        assert names_to_status["p2"] == ServiceStatus.STOPPING
+        assert names_to_status["n1"] == ServiceStatus.AVAILABLE
+
+    def test_selective_removal_non_persistent(self, provisioner_env):
+        _, prov, fake_cache = provisioner_env
+
+        p1 = _svc_info("p1", ServiceStatus.AVAILABLE)
+        p1.persistent = True
+        n1 = _svc_info("n1", ServiceStatus.AVAILABLE)
+        n1.persistent = False
+        n2 = _svc_info("n2", ServiceStatus.AVAILABLE)
+        n2.persistent = False
+
+        fake_cache._services = [p1, n1, n2]
+
+        # Update non-persistent services, omitting n2
+        ok = prov.update_active_services([n1], persistent=False)
+        assert ok
+
+        persisted = fake_cache.set_calls[-1]
+
+        names_to_status = {s.name: s.status for s in persisted}
+        assert names_to_status["p1"] == ServiceStatus.AVAILABLE
+        assert names_to_status["n1"] == ServiceStatus.AVAILABLE
+        assert names_to_status["n2"] == ServiceStatus.STOPPING
+
+    def test_full_reconciliation(self, provisioner_env):
+        _, prov, fake_cache = provisioner_env
+
+        p1 = _svc_info("p1", ServiceStatus.AVAILABLE)
+        p1.persistent = True
+        n1 = _svc_info("n1", ServiceStatus.AVAILABLE)
+        n1.persistent = False
+
+        fake_cache._services = [p1, n1]
+
+        # Update with empty list and persistent=None
+        # Both should be marked as STOPPING
+        ok = prov.update_active_services([], persistent=None)
+        assert ok
+
+        persisted = fake_cache.set_calls[-1]
+        assert all(s.status == ServiceStatus.STOPPING for s in persisted)

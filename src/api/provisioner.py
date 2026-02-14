@@ -131,7 +131,7 @@ async def get_active_services(
     summary="Update services",
     description="Activate and deactivate services",
 )
-async def update_services(
+async def update_active_services(
     service_updates: list[ServiceInformation],
     authenticated: bool = Depends(verify_system_key),
 ) -> dict:
@@ -149,7 +149,7 @@ async def update_services(
     """
     provisioner = SystemProvisioner.singleton()
     try:
-        updated = provisioner.update_services(service_updates)
+        updated = provisioner.update_active_services(service_updates)
     except ValueError as e:
         # Raised when a referenced service definition does not exist
         raise HTTPException(
@@ -181,12 +181,12 @@ async def update_services(
     summary="Update services (legacy endpoint)",
     description="Alias for /srv/services/active/update/",
 )
-async def update_services_legacy(
+async def update_active_services_legacy(
     service_updates: list[ServiceInformation],
     authenticated: bool = Depends(verify_system_key),
 ) -> dict:
     # type: ignore[arg-type]
-    return await update_services(service_updates, authenticated)
+    return await update_active_services(service_updates, authenticated)
 
 
 @app.get(

@@ -212,6 +212,7 @@ class ServiceInformation(BaseModel):
     name: str
     service: str
     realm: str = "default"
+    persistent: bool = False
     variety: str | None = None
     profile: str | None = None
     status: ServiceStatus | None = None

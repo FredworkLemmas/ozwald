@@ -112,15 +112,22 @@ class SystemProvisioner:
         """Get all service_definitions configured for this provisioner"""
         return self.config_reader.service_definitions
 
-    def get_active_services(self) -> List[ServiceInformation]:
+    def get_active_services(
+        self,
+        persistent: Optional[bool] = None,
+    ) -> List[ServiceInformation]:
         """Get all currently active services"""
         if self._active_services_cache:
-            return self._active_services_cache.get_services()
+            services = self._active_services_cache.get_services()
+            if persistent is None:
+                return services
+            return [s for s in services if s.persistent == persistent]
         return []
 
-    def update_services(
+    def update_active_services(
         self,
         service_updates: List[ServiceInformation],
+        persistent: Optional[bool] = None,
     ) -> bool:
         """Update active services based on provided service information.
         This initiates activation/deactivation of services.
@@ -132,18 +139,50 @@ class SystemProvisioner:
         if not self._active_services_cache:
             return False
 
+        # Validation
+        if persistent is True:
+            for si in service_updates:
+                if not si.persistent:
+                    raise ValueError(
+                        f"Service {si.name} is not persistent, but "
+                        "update_active_services was called with persistent=True"
+                    )
+        elif persistent is False:
+            for si in service_updates:
+                if si.persistent:
+                    raise ValueError(
+                        f"Service {si.name} is persistent, but "
+                        "update_active_services was called with "
+                        "persistent=False"
+                    )
+
         # Get current active services from cache
         active_service_info_objects = self._active_services_cache.get_services()
 
         # Create a set of requested service names
         requested_services = {si.name for si in service_updates}
 
-        # Stop services if they're not in the requested list
-        services_to_remove = [
-            svc
-            for svc in active_service_info_objects
-            if svc.name not in requested_services
-        ]
+        # Stop services if they're not in the requested list and within
+        # the persistence scope
+        if persistent is None:
+            services_to_remove = [
+                svc
+                for svc in active_service_info_objects
+                if svc.name not in requested_services
+            ]
+        elif persistent is True:
+            services_to_remove = [
+                svc
+                for svc in active_service_info_objects
+                if svc.persistent and svc.name not in requested_services
+            ]
+        else:  # persistent is False
+            services_to_remove = [
+                svc
+                for svc in active_service_info_objects
+                if not svc.persistent and svc.name not in requested_services
+            ]
+
         for svc in services_to_remove:
             svc.status = ServiceStatus.STOPPING
 
@@ -929,7 +968,7 @@ class SystemProvisioner:
             status=ServiceStatus.STARTING,
             info={},
         )
-        self.update_services([svc_info])
+        self.update_active_services([svc_info])
 
         # Manually trigger start because the main loop is blocked by us
         self._start_service(svc_info, service_cls, datetime.now())
@@ -979,7 +1018,7 @@ class SystemProvisioner:
         # Stop the service and restore unloaded state
         # Request no services active -> will mark existing as STOPPING
         logger.info(f"stopping service {inst_name}")
-        self.update_services([])
+        self.update_active_services([])
 
         # Manually trigger stop because the main loop is blocked by us
         # We need the service info with status STOPPING

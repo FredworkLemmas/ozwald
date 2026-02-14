@@ -532,7 +532,9 @@ def action_footprint_services(
         return 2
 
 
-def action_update_services(port: int, clear: bool, spec: str | None) -> int:
+def action_update_active_services(
+    port: int, clear: bool, spec: str | None
+) -> int:
     try:
         if clear:
             body: list[dict[str, Any]] = []
@@ -547,7 +549,7 @@ def action_update_services(port: int, clear: bool, spec: str | None) -> int:
 
         print(f"body: {json.dumps(body, indent=2)}")
 
-        data = ucli.update_services(port=port, body=body)
+        data = ucli.update_active_services(port=port, body=body)
 
         print(f"data: {json.dumps(data, indent=2)}")
         status = data.get("status")
@@ -676,7 +678,7 @@ def build_parser() -> argparse.ArgumentParser:
             "list_configured_services",
             "list_active_services",
             "show_host_resources",
-            "update_services",
+            "update_active_services",
             "footprint_services",
             "get_footprint_logs",
             "get_service_launch_logs",
@@ -725,7 +727,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--clear",
         action="store_true",
         help=(
-            "For update_services: send an empty list to clear active "
+            "For update_active_services: send an empty list to clear active "
             "service_definitions"
         ),
     )
@@ -767,7 +769,7 @@ def build_parser() -> argparse.ArgumentParser:
         "services_spec",
         nargs="?",
         help=(
-            "For update_services/footprint_services/get_footprint_logs: "
+            "For update_active_services/footprint_services/get_footprint_logs: "
             "comma-separated entries like NAME[service][variety][profile] "
             "or service[profile][variety] (or just service name for "
             "get_footprint_logs)"
@@ -789,7 +791,7 @@ def main(argv: list[str] | None = None) -> int:
     api_actions = {
         "list_configured_services",
         "list_active_services",
-        "update_services",
+        "update_active_services",
         "footprint_services",
         "get_footprint_logs",
         "get_service_launch_logs",
@@ -817,8 +819,8 @@ def main(argv: list[str] | None = None) -> int:
         return action_list_active_services(port_for_api)
     if args.action == "show_host_resources":
         return action_show_host_resources(args.use_api, port_for_api)
-    if args.action == "update_services":
-        return action_update_services(
+    if args.action == "update_active_services":
+        return action_update_active_services(
             port_for_api,
             args.clear,
             args.services_spec,
