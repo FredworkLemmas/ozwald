@@ -714,13 +714,17 @@ class SystemProvisioner:
         Idempotent: skips if already mounted.
         """
         vols = getattr(self.config_reader, "volumes", {}) or {}
-        if not vols:
+        nfs_vols = {
+            name: spec
+            for name, spec in vols.items()
+            if spec.get("type") == "nfs"
+        }
+        if not nfs_vols:
             return
+
         mount_root = os.environ.get("OZWALD_NFS_MOUNTS", "/exports")
         pathlib.Path(mount_root).mkdir(exist_ok=True, parents=True)
-        for name, spec in vols.items():
-            if spec.get("type") != "nfs":
-                continue
+        for name, spec in nfs_vols.items():
             server = spec.get("server")
             path = spec.get("path")
             opts = spec.get("options")

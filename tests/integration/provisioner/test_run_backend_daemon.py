@@ -8,6 +8,7 @@ from typing import Iterator, List
 
 import pytest
 import redis
+import yaml
 from dotenv import load_dotenv
 
 from orchestration.models import Cache, ServiceStatus
@@ -19,7 +20,26 @@ external_redis_port = os.environ.get("DEFAULT_PROVISIONER_REDIS_PORT")
 
 
 def _redis_connection_parameters() -> dict:
-    return {"host": "localhost", "port": external_redis_port, "db": 1}
+    repo_root = Path(__file__).resolve().parents[3]
+    settings_path = repo_root / "dev" / "resources" / "settings.yml"
+    with settings_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    name = os.environ.get("OZWALD_PROVISIONER", "jamma")
+    provs = cfg.get("provisioners", [])
+    cache_params = {}
+    for prov in provs:
+        if prov.get("name") == name:
+            cache_params = (prov.get("cache") or {}).get("parameters", {})
+            break
+
+    port_env = (
+        os.environ.get("OZWALD_PROVISIONER_REDIS_PORT")
+        or os.environ.get("DEFAULT_PROVISIONER_REDIS_PORT")
+        or "6479"
+    )
+    db = cache_params.get("db", 0)
+    return {"host": "localhost", "port": int(port_env), "db": db}
 
 
 def _docker_available() -> bool:

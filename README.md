@@ -99,33 +99,35 @@ provisioners:
         port: 6379
         db: 0
 
-service-definitions:
-  - name: qwen1.5-vllm
-    type: container
-    description: DeepSeek Qwen 1.5B via vLLM
-    varieties:
-      nvidia:
-        image: openai-api-vllm.nvidia
+realms:
+  default:
+    service-definitions:
+      - name: qwen1.5-vllm
+        type: container
+        description: DeepSeek Qwen 1.5B via vLLM
+        varieties:
+          nvidia:
+            image: openai-api-vllm.nvidia
+            environment:
+              GPU: true
+          amdgpu:
+            image: openai-api-vllm.amdgpu
+            environment:
+              GPU: true
+          cpu-only:
+            image: openai-api-vllm.cpu-only
+            environment:
+              GPU: false
         environment:
-          GPU: true
-      amdgpu:
-        image: openai-api-vllm.amdgpu
-        environment:
-          GPU: true
-      cpu-only:
-        image: openai-api-vllm.cpu-only
-        environment:
-          GPU: false
-    environment:
-      MODEL_NAME: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
-    profiles:
-      no-gpu:
-        environment:
-          MAX_MODEL_LEN: 45000
-      fast-gpu:
-        environment:
-          GPU_MEMORY_UTILIZATION: 0.9
-          CPU_OFFLOAD_GB: ""
+          MODEL_NAME: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+        profiles:
+          no-gpu:
+            environment:
+              MAX_MODEL_LEN: 45000
+          fast-gpu:
+            environment:
+              GPU_MEMORY_UTILIZATION: 0.9
+              CPU_OFFLOAD_GB: ""
 ```
 
 2) **Set the mandatory environment variables**
@@ -170,6 +172,7 @@ Configuration reference
 - `hosts[]`: Named machines and their IPs.
 - `provisioners[]`: Defines where the provisioner runs and its state cache
   (Redis).
+- `realms`: Groups for `networks` and `service-definitions`.
 - `service-definitions[]`: Descriptions of services, including hardware
   `varieties` and runtime `profiles`.
 

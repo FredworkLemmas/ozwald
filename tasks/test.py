@@ -70,32 +70,38 @@ def _ensure_temp_assets(
                     },
                 },
             ],
-            "service-definitions": [
-                {
-                    "name": "test_env_and_vols",
-                    "type": "container",
-                    "description": "Test environment and volumes",
-                    "image": "test_env_and_vols",
-                    "environment": {
-                        "TEST_ENV_VAR": "test_env_var_value",
-                        "ANOTHER_TEST_ENV_VAR": "another_test_env_var_value",
-                        "FILE_LISTING_PATHS": "/solar_system",
-                    },
-                    "volumes": [
+            "realms": {
+                "default": {
+                    "service-definitions": [
                         {
-                            "name": "solar_system",
-                            "target": "/solar_system",
-                            "read_only": True,
+                            "name": "test_env_and_vols",
+                            "type": "container",
+                            "description": "Test environment and volumes",
+                            "image": "test_env_and_vols",
+                            "environment": {
+                                "TEST_ENV_VAR": "test_env_var_value",
+                                "ANOTHER_TEST_ENV_VAR": (
+                                    "another_test_env_var_value"
+                                ),
+                                "FILE_LISTING_PATHS": "/solar_system",
+                            },
+                            "volumes": [
+                                {
+                                    "name": "solar_system",
+                                    "target": "/solar_system",
+                                    "read_only": True,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "simple_test_1",
+                            "type": "container",
+                            "description": "Simple test service",
+                            "image": "simple_test_1",
                         },
                     ],
-                },
-                {
-                    "name": "simple_test_1",
-                    "type": "container",
-                    "description": "Simple test service",
-                    "image": "simple_test_1",
-                },
-            ],
+                }
+            },
             "volumes": {
                 "solar_system": {
                     "type": "bind",
