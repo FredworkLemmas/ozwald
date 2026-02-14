@@ -35,7 +35,7 @@ class TestOzwaldUpdateServices:
             return {"status": "accepted"}
 
         mocker.patch(
-            "command.ozwald.ucli.update_services",
+            "command.ozwald.ucli.update_active_services",
             side_effect=fake_update_services,
         )
         return called
@@ -46,7 +46,7 @@ class TestOzwaldUpdateServices:
         self._patch_config(mocker, {})
         called = self._patch_update_helper(mocker)
 
-        rc = ozwald.main(["update_services", "--clear"])
+        rc = ozwald.main(["update_active_services", "--clear"])
         assert rc == 0
         assert called["args"]["body"] == []
 
@@ -56,7 +56,7 @@ class TestOzwaldUpdateServices:
         self._patch_config(mocker, {"srv": _fake_service([], ["GPU"])})
         called = self._patch_update_helper(mocker)
 
-        rc = ozwald.main(["update_services", "n1[srv][GPU]"])
+        rc = ozwald.main(["update_active_services", "n1[srv][GPU]"])
         assert rc == 0
         body = called["args"]["body"]
         assert body == [
@@ -75,7 +75,7 @@ class TestOzwaldUpdateServices:
         self._patch_config(mocker, {"srv": _fake_service(["A"], [])})
         called = self._patch_update_helper(mocker)
 
-        rc = ozwald.main(["update_services", "n1[srv][A]"])
+        rc = ozwald.main(["update_active_services", "n1[srv][A]"])
         assert rc == 0
         body = called["args"]["body"]
         assert body == [
@@ -92,10 +92,10 @@ class TestOzwaldUpdateServices:
         from command import ozwald
 
         self._patch_config(mocker, {"srv": _fake_service(["A"], ["P"])})
-        # Do not patch update_services to ensure it isn't called
-        spy = mocker.patch("command.ozwald.ucli.update_services")
+        # Do not patch update_active_services to ensure it isn't called
+        spy = mocker.patch("command.ozwald.ucli.update_active_services")
 
-        rc = ozwald.main(["update_services", "n1[srv][X]"])
+        rc = ozwald.main(["update_active_services", "n1[srv][X]"])
         assert rc == 2
         assert spy.call_count == 0
 
@@ -109,9 +109,9 @@ class TestOzwaldUpdateServices:
         monkeypatch.delenv("OZWALD_SYSTEM_KEY", raising=False)
         # Ensure it doesn't even get to config reading or CLI call
         spy_cfg = mocker.patch("command.ozwald.SystemConfigReader.singleton")
-        spy_cli = mocker.patch("command.ozwald.ucli.update_services")
+        spy_cli = mocker.patch("command.ozwald.ucli.update_active_services")
 
-        rc = ozwald.main(["update_services", "--clear"])
+        rc = ozwald.main(["update_active_services", "--clear"])
         assert rc == 1
         assert spy_cfg.call_count == 0
         assert spy_cli.call_count == 0

@@ -24,7 +24,7 @@ class TestCliUpdateServices:
 
         http_post = mocker.patch("util.cli.http_post", return_value=resp)
 
-        out = ucli.update_services(port=8123, body=[])
+        out = ucli.update_active_services(port=8123, body=[])
         assert out["status"] == "accepted"
         http_post.assert_called_once()
         url = http_post.call_args[0][0]
@@ -48,7 +48,7 @@ class TestCliUpdateServices:
             side_effect=[resp404, resp202],
         )
 
-        out = ucli.update_services(port=8123, body=[{"x": 1}])
+        out = ucli.update_active_services(port=8123, body=[{"x": 1}])
         assert out["status"] == "accepted"
         assert http_post.call_count == 2
         url1 = http_post.call_args_list[0][0][0]

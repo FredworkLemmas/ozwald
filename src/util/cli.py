@@ -79,7 +79,7 @@ def get_openapi_spec(
     return data
 
 
-def update_services(
+def update_active_services(
     *,
     port: int = 8000,
     body: list[dict[str, Any]] | list[Any],
@@ -100,7 +100,9 @@ def update_services(
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, dict):
-        raise ValueError("Unexpected response format for update_services")
+        raise ValueError(
+            "Unexpected response format for update_active_services"
+        )
     return data
 
 

@@ -190,7 +190,7 @@ class TestUpdateServices:
         mocker,
     ) -> None:
         """`/srv/services/active/update/` responds 202 and calls
-        `provisioner.update_services(...)` with parsed models.
+        `provisioner.update_active_services(...)` with parsed models.
         """
         # Payload to send (as JSON)
         payload = [
@@ -228,8 +228,8 @@ class TestUpdateServices:
 
         # Verify the call received a list of ServiceInformation models
         # matching the payload
-        prov.update_services.assert_called_once()
-        (arg_list,), _ = prov.update_services.call_args
+        prov.update_active_services.assert_called_once()
+        (arg_list,), _ = prov.update_active_services.call_args
         assert isinstance(arg_list, list)
 
         expected_models = [ServiceInformation(**item) for item in payload]
@@ -251,7 +251,7 @@ class TestUpdateServicesEmptyList:
         the provisioner with an empty list of ServiceInformation.
         """
         prov = mocker.Mock()
-        prov.update_services.return_value = True
+        prov.update_active_services.return_value = True
         mocker.patch(
             "src.api.provisioner.SystemProvisioner.singleton",
             return_value=prov,
@@ -265,8 +265,8 @@ class TestUpdateServicesEmptyList:
         assert resp.status_code == 202
         assert resp.json()["status"] == "accepted"
 
-        prov.update_services.assert_called_once()
-        (arg_list,), _ = prov.update_services.call_args
+        prov.update_active_services.assert_called_once()
+        (arg_list,), _ = prov.update_active_services.call_args
         assert isinstance(arg_list, list)
         assert arg_list == []
 
@@ -280,7 +280,7 @@ class TestUpdateServicesEmptyList:
         should return 503.
         """
         prov = mocker.Mock()
-        prov.update_services.return_value = False
+        prov.update_active_services.return_value = False
         mocker.patch(
             "src.api.provisioner.SystemProvisioner.singleton",
             return_value=prov,
@@ -304,7 +304,7 @@ class TestUpdateServicesEmptyList:
         when passed an empty list.
         """
         prov = mocker.Mock()
-        prov.update_services.return_value = True
+        prov.update_active_services.return_value = True
         mocker.patch(
             "src.api.provisioner.SystemProvisioner.singleton",
             return_value=prov,
@@ -317,7 +317,7 @@ class TestUpdateServicesEmptyList:
         )
         assert resp.status_code == 202
         assert resp.json()["status"] == "accepted"
-        prov.update_services.assert_called_once()
+        prov.update_active_services.assert_called_once()
 
     def test_update_services_value_error_yields_400(
         self,
@@ -329,7 +329,7 @@ class TestUpdateServicesEmptyList:
         400 response by the API.
         """
         prov = mocker.Mock()
-        prov.update_services.side_effect = ValueError("not found")
+        prov.update_active_services.side_effect = ValueError("not found")
         mocker.patch(
             "src.api.provisioner.SystemProvisioner.singleton",
             return_value=prov,

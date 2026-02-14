@@ -177,7 +177,7 @@ def _update_services(service_updates: list[dict]):
     prov = SystemProvisioner.singleton(cache=cache)
 
     infos = [ServiceInformation(**item) for item in service_updates]
-    prov.update_services(infos)
+    prov.update_active_services(infos)
 
 
 def _start_services_locally(service_updates: list[dict]):
