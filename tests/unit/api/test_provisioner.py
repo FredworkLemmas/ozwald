@@ -124,11 +124,13 @@ class TestConfiguredServices:
         defs: List[ServiceDefinition] = [
             ServiceDefinition(
                 service_name="svc-a",
+                realm="default",
                 type=ServiceType.API,
                 description="A",
             ),
             ServiceDefinition(
                 service_name="svc-b",
+                realm="default",
                 type=ServiceType.SQLITE,
                 description=None,
             ),
@@ -161,6 +163,7 @@ class TestActiveServices:
             ServiceInformation(
                 name="inst-1",
                 service="svc-a",
+                realm="default",
                 profile=None,
                 properties={"p1": "v1"},
             ),
@@ -194,6 +197,7 @@ class TestUpdateServices:
             {
                 "name": "inst-1",
                 "service": "svc-a",
+                "realm": "default",
                 "profile": "default",
                 "status": None,
                 "info": None,
@@ -201,6 +205,7 @@ class TestUpdateServices:
             {
                 "name": "inst-2",
                 "service": "svc-b",
+                "realm": "default",
                 "profile": "gpu",
                 "status": None,
                 "info": {"note": "test"},
@@ -334,6 +339,7 @@ class TestUpdateServicesEmptyList:
             {
                 "name": "inst-x",
                 "service": "unknown",
+                "realm": "default",
                 "profile": "default",
             },
         ]

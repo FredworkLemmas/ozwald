@@ -301,7 +301,13 @@ def _parse_services_spec_entry(
         raise ValueError(
             "Invalid service spec entry; expected NAME[service]...",
         )
+    realm = "default"
     name_part = entry.split("[", 1)[0].strip()
+    if ":" in name_part:
+        realm, name_part = name_part.split(":", 1)
+        realm = realm.strip()
+        name_part = name_part.strip()
+
     if not name_part:
         raise ValueError("Service instance name is required before '['")
 
@@ -314,7 +320,7 @@ def _parse_services_spec_entry(
         raise ValueError("Service name cannot be empty")
 
     # Look up service definition to validate/disambiguate
-    svc_def = cfg.get_service_by_name(service_name)
+    svc_def = cfg.get_service_by_name(service_name, realm)
     varieties = set((svc_def.varieties or {}).keys()) if svc_def else set()
     profiles = set((svc_def.profiles or {}).keys()) if svc_def else set()
 
@@ -383,6 +389,7 @@ def _parse_services_spec_entry(
     return {
         "name": name_part,
         "service": service_name,
+        "realm": realm,
         "variety": variety,
         "profile": profile,
     }
@@ -404,14 +411,22 @@ def _parse_footprint_spec_entry(
     entry: str,
     cfg: SystemConfigReader,
 ) -> dict[str, Any]:
-    service_name = entry.split("[", 1)[0].strip()
+    realm = "default"
+    name_part = entry.split("[", 1)[0].strip()
+    if ":" in name_part:
+        realm, service_name = name_part.split(":", 1)
+        realm = realm.strip()
+        service_name = service_name.strip()
+    else:
+        service_name = name_part
+
     if not service_name:
         raise ValueError("Service name is required")
 
     tokens = [t.strip() for t in _bracket_tokens(entry)]
-    svc_def = cfg.get_service_by_name(service_name)
+    svc_def = cfg.get_service_by_name(service_name, realm)
     if not svc_def:
-        raise ValueError(f"Unknown service '{service_name}'")
+        raise ValueError(f"Unknown service '{service_name}' in realm '{realm}'")
 
     has_profiles = bool(svc_def.profiles)
     has_varieties = bool(svc_def.varieties)
@@ -457,6 +472,7 @@ def _parse_footprint_spec_entry(
 
     return {
         "service_name": service_name,
+        "realm": realm,
         "profile": profile,
         "variety": variety,
     }
@@ -552,6 +568,7 @@ def action_get_service_launch_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
 ) -> int:
     if not service_name:
         print("Error: service name is required for get_service_launch_logs")
@@ -562,6 +579,7 @@ def action_get_service_launch_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
         )
@@ -583,6 +601,7 @@ def action_get_service_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
 ) -> int:
     if not service_name:
         print("Error: service name is required for get_service_logs")
@@ -593,6 +612,7 @@ def action_get_service_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
         )
@@ -614,6 +634,7 @@ def action_get_footprint_logs(
     variety: str | None,
     top: int | None,
     last: int | None,
+    realm: str,
     log_type: str = "container",
 ) -> int:
     if not service_name:
@@ -625,6 +646,7 @@ def action_get_footprint_logs(
             service_name=service_name,
             profile=profile,
             variety=variety,
+            realm=realm,
             top=top,
             last=last,
             log_type=log_type,
@@ -737,6 +759,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="For get_footprint_logs: only include the last N lines of logs",
     )
     parser.add_argument(
+        "--realm",
+        default="default",
+        help="Realm for service lookup/logs (default: default)",
+    )
+    parser.add_argument(
         "services_spec",
         nargs="?",
         help=(
@@ -810,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
             args.log_type,
         )
     if args.action == "get_service_launch_logs":
@@ -820,6 +848,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
         )
     if args.action == "get_service_logs":
         return action_get_service_logs(
@@ -829,6 +858,7 @@ def main(argv: list[str] | None = None) -> int:
             args.variety,
             args.top,
             args.last,
+            args.realm,
         )
     if args.action == "status":
         return action_status()

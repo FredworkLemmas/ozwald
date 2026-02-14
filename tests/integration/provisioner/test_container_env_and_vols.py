@@ -50,7 +50,7 @@ def _redis_connection_parameters() -> dict:
         or "6479"
     )
     port = int(port_env)
-    return {"host": "localhost", "port": port, "db": 0}
+    return {"host": "localhost", "port": port, "db": 1}
 
 
 def _flush_redis(host: str, port: int, db: int = 0) -> None:
@@ -119,7 +119,7 @@ def docker_prereq():
 
     repo_root = Path(__file__).resolve().parents[3]
     dockerfile = repo_root / "dockerfiles" / "Dockerfile.test_env_and_vols"
-    _ensure_image("test_env_and_vols", str(dockerfile))
+    _ensure_image("ozwald-test_env_and_vols", str(dockerfile))
 
 
 @pytest.fixture(scope="module")
@@ -200,6 +200,9 @@ def _start_services_locally(service_updates: List[dict]):
     # Ensure singletons refer to this process config/cache
     _update_services(service_updates)
 
+    # Initialize services (e.g., create networks)
+    ContainerService.init_service()
+
     infos = [ServiceInformation(**item) for item in service_updates]
     for si in infos:
         svc = ContainerService(service_info=si)
@@ -231,7 +234,7 @@ def stop_started_services_after_test(started_instances):
 
     # Wait for known containers to disappear, then force-remove if not
     for inst in started_instances:
-        cname = f"service-{inst}"
+        cname = f"ozsvc--default--{inst}"
         try:
             _wait_for(
                 lambda cname=cname: not _container_running(cname),
@@ -264,6 +267,7 @@ def test_container_env_and_volumes(
         {
             "name": instance_name,
             "service": svc_name,
+            "realm": "default",
             "profile": None,
             "status": ServiceStatus.STARTING,
         },
@@ -274,7 +278,7 @@ def test_container_env_and_volumes(
     started_instances.append(instance_name)
 
     # Wait for container to appear
-    container = f"service-{instance_name}"
+    container = f"ozsvc--default--{instance_name}"
     _wait_for(
         lambda: _container_running(container),
         timeout=30,

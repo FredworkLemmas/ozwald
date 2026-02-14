@@ -21,7 +21,11 @@ class TestCliFootprintLogs:
         http_get.assert_called_once()
         args, kwargs = http_get.call_args
         assert "/srv/services/footprint-logs/container/svc1/" in args[0]
-        assert kwargs["params"] == {"profile": "p1", "top": 5}
+        assert kwargs["params"] == {
+            "realm": "default",
+            "profile": "p1",
+            "top": 5,
+        }
 
     def test_get_footprint_logs_runner_success(self, mocker):
         resp = types.SimpleNamespace()
@@ -35,5 +39,6 @@ class TestCliFootprintLogs:
         out = ucli.get_footprint_logs(service_name="svc1", log_type="runner")
 
         assert out["lines"] == ["r1"]
-        args, _ = http_get.call_args
+        args, kwargs = http_get.call_args
         assert "/srv/services/footprint-logs/runner/svc1/" in args[0]
+        assert kwargs["params"] == {"realm": "default"}

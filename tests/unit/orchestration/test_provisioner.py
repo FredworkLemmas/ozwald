@@ -102,11 +102,15 @@ def provisioner_env(monkeypatch, tmp_path):
         def __init__(self, type_value: str = "dummy-type"):
             self._type_value = type_value
             self.services = []
+            self.provisioners = []
+            self.defined_networks = []
 
-        def get_service_by_name(self, name: str):
+        def get_service_by_name(self, name: str, realm: str):
             return StubServiceDef(self._type_value)
 
-        def get_effective_service_definition(self, service, profile, variety):
+        def get_effective_service_definition(
+            self, service, profile, variety, realm=None
+        ):
             from orchestration.models import EffectiveServiceDefinition
 
             return EffectiveServiceDefinition(
@@ -117,6 +121,16 @@ def provisioner_env(monkeypatch, tmp_path):
 
     cache = Cache(type="memory", parameters={})
     config_reader = StubConfigReader()
+
+    # Patch SystemConfigReader.singleton to return our stub
+    import config.reader as reader_mod
+
+    monkeypatch.setattr(
+        reader_mod.SystemConfigReader,
+        "singleton",
+        staticmethod(lambda: config_reader),
+    )
+
     prov = SystemProvisioner(config_reader=config_reader, cache=cache)
 
     # Expose internals for tests to seed/inspect cache

@@ -20,7 +20,7 @@ class TestOzwaldUpdateServices:
         singleton = mocker.patch("command.ozwald.SystemConfigReader.singleton")
         cfg = types.SimpleNamespace()
 
-        def get_service_by_name(name):
+        def get_service_by_name(name, realm):
             return service_map.get(name)
 
         cfg.get_service_by_name = get_service_by_name
@@ -63,6 +63,7 @@ class TestOzwaldUpdateServices:
             {
                 "name": "n1",
                 "service": "srv",
+                "realm": "default",
                 "variety": None,
                 "profile": "GPU",
             },
@@ -81,6 +82,7 @@ class TestOzwaldUpdateServices:
             {
                 "name": "n1",
                 "service": "srv",
+                "realm": "default",
                 "variety": "A",
                 "profile": None,
             },

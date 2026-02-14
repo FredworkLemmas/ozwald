@@ -83,10 +83,13 @@ def _auth_headers() -> dict:
 
 def _pick_a_service_from_settings() -> tuple[str, str]:
     """
-    Return (service_name, profile_name) from settings service_definitions list.
+    Return (service_name, profile_name) from settings service_definitions list
+    in the default realm.
     """
     cfg = _load_settings()
-    services = cfg.get("service-definitions") or []
+    realms = cfg.get("realms") or {}
+    default_realm = realms.get("default") or {}
+    services = default_realm.get("service-definitions") or []
     if not services:
         raise RuntimeError("No service-definitions configured in settings file")
     svc = services[0]

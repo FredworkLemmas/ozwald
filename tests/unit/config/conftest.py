@@ -94,42 +94,6 @@ def sample_config_dict():
                 ],
             },
         ],
-        "service-definitions": [
-            {
-                "name": "qwen1.5-vllm",
-                "type": "container",
-                "description": "DeepSeek Qwen 1.5B",
-                "varieties": {
-                    "nvidia": {"image": "openai-api-vllm.nvidia"},
-                    "cpu-only": {"image": "openai-api-vllm.cpu-only"},
-                },
-                "environment": {
-                    "MODEL_NAME": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-                },
-                "profiles": [
-                    {
-                        "name": "embed",
-                        "environment": {
-                            "GPU": True,
-                            "CPU_OFFLOAD_GB": "",
-                            "GPU_MEMORY_UTILIZATION": 0.7,
-                            "MAX_MODEL_LEN": 1100,
-                        },
-                    },
-                    {"name": "no-gpu", "environment": {"GPU": False}},
-                ],
-            },
-            {
-                "name": "chunker",
-                "type": "container",
-                "description": "Chunker service",
-                "environment": {
-                    "SOURCES": ["fiction-sources"],
-                    "CHUNK_SIZE": 1000,
-                    "CHUNK_OVERLAP": 500,
-                },
-            },
-        ],
         "provisioners": [
             {
                 "name": "bitty",
@@ -148,6 +112,48 @@ def sample_config_dict():
                 },
             },
         ],
+        "realms": {
+            "default": {
+                "service-definitions": [
+                    {
+                        "name": "qwen1.5-vllm",
+                        "type": "container",
+                        "description": "DeepSeek Qwen 1.5B",
+                        "varieties": {
+                            "nvidia": {"image": "openai-api-vllm.nvidia"},
+                            "cpu-only": {"image": "openai-api-vllm.cpu-only"},
+                        },
+                        "environment": {
+                            "MODEL_NAME": (
+                                "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+                            ),
+                        },
+                        "profiles": [
+                            {
+                                "name": "embed",
+                                "environment": {
+                                    "GPU": True,
+                                    "CPU_OFFLOAD_GB": "",
+                                    "GPU_MEMORY_UTILIZATION": 0.7,
+                                    "MAX_MODEL_LEN": 1100,
+                                },
+                            },
+                            {"name": "no-gpu", "environment": {"GPU": False}},
+                        ],
+                    },
+                    {
+                        "name": "chunker",
+                        "type": "container",
+                        "description": "Chunker service",
+                        "environment": {
+                            "SOURCES": ["fiction-sources"],
+                            "CHUNK_SIZE": 1000,
+                            "CHUNK_OVERLAP": 500,
+                        },
+                    },
+                ],
+            }
+        },
     }
 
 
@@ -165,13 +171,13 @@ def sample_config_file(sample_config_dict, tmp_path):
 @pytest.fixture
 def minimal_config_dict():
     """Provides a minimal valid configuration with only required fields."""
-    return {"hosts": [], "service-definitions": [], "provisioners": []}
+    return {"hosts": [], "realms": {}, "provisioners": []}
 
 
 @pytest.fixture
 def config_without_cache_dict():
     """Provides a configuration without cache to test optional cache field."""
-    return {"hosts": [], "service-definitions": [], "provisioners": []}
+    return {"hosts": [], "realms": {}, "provisioners": []}
 
 
 @pytest.fixture
@@ -188,7 +194,7 @@ def config_with_provisioner_without_cache_dict():
     """Provides a configuration with provisioners that don't have cache."""
     return {
         "hosts": [],
-        "service-definitions": [],
+        "realms": {},
         "provisioners": [{"name": "test-provisioner", "host": "test-host"}],
     }
 
@@ -234,7 +240,7 @@ def invalid_yaml_file(tmp_path):
 @pytest.fixture
 def missing_orchestrator_config_dict():
     """Deprecated: orchestrator section removed from simplified schema."""
-    return {"hosts": [], "service-definitions": [], "provisioners": []}
+    return {"hosts": [], "realms": {}, "provisioners": []}
 
 
 @pytest.fixture

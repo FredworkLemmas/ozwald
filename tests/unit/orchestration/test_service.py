@@ -314,6 +314,7 @@ class TestEffectiveConfigResolution:
         # Base service definition
         svc = ServiceDefinition(
             service_name="test",
+            realm="default",
             type="container",
             description="test svc",
             image="svc-img",
@@ -363,7 +364,7 @@ class TestEffectiveConfigResolution:
             def __init__(self, svc_def):
                 self._svc = svc_def
 
-            def get_service_by_name(self, name: str):
+            def get_service_by_name(self, name: str, realm: str):
                 return self._svc
 
             def get_effective_service_definition(
@@ -371,12 +372,14 @@ class TestEffectiveConfigResolution:
                 service,
                 profile,
                 variety,
+                realm=None,
             ):
                 return ConfigReader.get_effective_service_definition(
                     self,
                     service,
                     profile,
                     variety,
+                    realm=realm,
                 )
 
         svc_def = self._build_service_def()

@@ -28,6 +28,8 @@ class Resource(BaseModel):
 
 class Network(BaseModel):
     name: str
+    type: str
+    realm: str = "default"
 
 
 # ============================================================================
@@ -49,6 +51,7 @@ class FootprintConfig(BaseModel):
 
 class ConfiguredServiceIdentifier(BaseModel):
     service_name: str
+    realm: str = "default"
     profile: str | None = None
     variety: str | None = None
 
@@ -121,6 +124,7 @@ class ServiceDefinitionVariety(BaseModel):
 
 class ServiceDefinition(BaseModel):
     service_name: str
+    realm: str = "default"
     type: str | ServiceType
     description: str | None = None
 
@@ -154,6 +158,7 @@ class ServiceDefinition(BaseModel):
 
 
 class EffectiveServiceDefinition(BaseModel):
+    realm: str = ""
     image: str = ""
     environment: dict[str, Any] = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
@@ -196,6 +201,7 @@ class Service(BaseModel):
 
     name: str
     service_name: str  # Reference to ServiceDefinition
+    realm: str = "default"
     host: str
     parameters: dict[str, Any] | None = None
 
@@ -205,11 +211,23 @@ class ServiceInformation(BaseModel):
 
     name: str
     service: str
+    realm: str = "default"
     variety: str | None = None
     profile: str | None = None
     status: ServiceStatus | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
     info: dict[str, Any] | None = {}  # None on request, dict on response
+
+
+# ============================================================================
+# Realm Models
+# ============================================================================
+class Realm(BaseModel):
+    name: str
+    service_definitions: list[ServiceDefinition] | None = Field(
+        default_factory=list
+    )
+    networks: list[Network] | None = Field(default_factory=list)
 
 
 # ============================================================================
@@ -229,10 +247,10 @@ class Provisioner(BaseModel):
     cache: Cache | None = None
 
 
-class ProvisionerState(BaseModel):
-    provisioner: str
-    available_resources: list[Resource]
-    services: list[Service] | None
+# class ProvisionerState(BaseModel):
+#     provisioner: str
+#     available_resources: list[Resource]
+#     services: list[Service] | None
 
 
 # ============================================================================
@@ -240,6 +258,7 @@ class ProvisionerState(BaseModel):
 # ============================================================================
 class OzwaldConfig(BaseModel):
     hosts: list[Host] = Field(default_factory=list)
+    realms: dict[str, Realm] = Field(default_factory=dict)
     service_definitions: list[ServiceDefinition] = Field(
         default_factory=list,
         alias="service-definitions",
@@ -248,14 +267,6 @@ class OzwaldConfig(BaseModel):
     networks: list[Network] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
     volumes: dict[str, dict[str, Any]] = Field(default_factory=dict)
-
-
-# ============================================================================
-# Legacy Model (keeping for backward compatibility)
-# ============================================================================
-class ProvisionerProfile(BaseModel):
-    name: str
-    services: list[Service]
 
 
 # ============================================================================

@@ -42,16 +42,20 @@ class BaseProvisionableService(Service):
         super().__init__(
             name=service_info.name,
             service_name=service_info.service,
+            realm=service_info.realm,
             host=os.environ["OZWALD_HOST"],
             # Runtime-level parameters only; definition no longer supplies
             # generic parameters. Keep empty unless caller overrides later.
             parameters=incoming_params,
-            profile=service_info.profile,
         )
         from orchestration.provisioner import SystemProvisioner
 
         self._cache = SystemProvisioner.singleton().get_cache()
         self._service_info = service_info
+
+    @classmethod
+    def init_service(cls):
+        """Initialize the service class (abstract in base)."""
 
     # Lifecycle to be implemented by subclasses (e.g., ContainerService)
 
@@ -71,14 +75,24 @@ class BaseProvisionableService(Service):
         """Return the service definition for this service instance."""
         si = self.get_service_information()
         config_reader = SystemConfigReader.singleton()
-        service_def = config_reader.get_service_by_name(si.service)
+        service_def = config_reader.get_service_by_name(si.service, si.realm)
         if service_def is None:
             raise RuntimeError(
-                f"Service definition for service {si.service} not found",
+                f"Service definition for service {si.service} "
+                f"not found in realm {si.realm}",
             )
         return service_def
 
     # (no container-specific helpers are implemented in the base class)
+
+    @classmethod
+    def get_service_classes(cls) -> list[Type["BaseProvisionableService"]]:
+        """Return all registered service classes."""
+        if cls._service_registry is None:
+            with cls._service_registry_lock:
+                if cls._service_registry is None:
+                    cls._service_registry = cls._build_service_registry()
+        return list(cls._service_registry.values())
 
     @classmethod
     def _lookup_service(

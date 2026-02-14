@@ -320,6 +320,12 @@ class SystemProvisioner:
 
         return True
 
+    def _init_services(self) -> None:
+        """Call init_service class method for each service class."""
+        for svc_cls in BaseProvisionableService.get_service_classes():
+            logger.info("Initializing service class: %s", svc_cls.__name__)
+            svc_cls.init_service()
+
     def _get_service_class_from_service_info(
         self, svc_info: ServiceInformation
     ) -> Optional[Type["BaseProvisionableService"]]:
@@ -327,6 +333,7 @@ class SystemProvisioner:
         # service type
         service_def = self.config_reader.get_service_by_name(
             svc_info.service,
+            svc_info.realm,
         )
         if not service_def:
             logger.error(
@@ -659,6 +666,9 @@ class SystemProvisioner:
         if not self._validate_footprint_data_file_is_writable():
             return
 
+        # Initialize services
+        self._init_services()
+
         # Graceful shutdown handling
         running = True
 
@@ -790,6 +800,7 @@ class SystemProvisioner:
                 ):
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         profile=profile,
                         variety=variety,
                     )
@@ -797,17 +808,20 @@ class SystemProvisioner:
                 for profile in service_def.profiles:
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         profile=profile,
                     )
             elif service_def.varieties:
                 for variety in service_def.varieties:
                     yield ConfiguredServiceIdentifier(
                         service_name=service_def.service_name,
+                        realm=service_def.realm,
                         variety=variety,
                     )
             else:
                 yield ConfiguredServiceIdentifier(
                     service_name=service_def.service_name,
+                    realm=service_def.realm,
                 )
 
         targets: List[ConfiguredServiceIdentifier] = []
@@ -879,6 +893,7 @@ class SystemProvisioner:
         tmp_svc_info = ServiceInformation(
             name="temp",
             service=target.service_name,
+            realm=target.realm,
             profile=target.profile,
             variety=target.variety,
             status=ServiceStatus.STARTING,
@@ -904,6 +919,7 @@ class SystemProvisioner:
         svc_info = ServiceInformation(
             name=inst_name,
             service=target.service_name,
+            realm=target.realm,
             profile=target.profile,
             variety=target.variety,
             status=ServiceStatus.STARTING,
@@ -926,6 +942,7 @@ class SystemProvisioner:
             target.service_name,
             target.profile,
             target.variety,
+            realm=target.realm,
         )
         footprint_config = effective_service_def.footprint
         time.sleep(footprint_config.run_time)
@@ -1075,6 +1092,7 @@ class SystemProvisioner:
         # read service definition
         service_def = self.config_reader.get_service_by_name(
             service_info.service,
+            service_info.realm,
         )
         if not service_def:
             raise ValueError(
@@ -1087,6 +1105,7 @@ class SystemProvisioner:
             service_def,
             service_info.profile,
             service_info.variety,
+            realm=service_info.realm,
         )
         service_info.properties = effective_def.properties
 
