@@ -136,6 +136,15 @@ def _container_logs(name: str, tail: int = 10) -> str:
     return result.stdout
 
 
+def _network_exists(name: str) -> bool:
+    result = subprocess.run(
+        ["docker", "network", "inspect", name],
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def _wait_for(
     predicate,
     timeout: float,
@@ -409,3 +418,96 @@ def test_run_backend_daemon_start_stop_two_instances_individually(
         timeout=45,
         description="active service_definitions cache empty",
     )
+
+
+def test_network_lifecycle_cleanup(tmp_path, docker_prereq):
+    """Verify that configured networks are created and cleaned up."""
+    config_data = {
+        "realms": {
+            "test_lifecycle": {
+                "networks": [
+                    {"name": "bridge_net", "type": "bridge"},
+                    {"name": "ipvlan_net", "type": "ipvlan"},
+                ]
+            }
+        },
+        "provisioners": [
+            {
+                "name": "lifecycle_prov",
+                "host": "localhost",
+                "cache": {
+                    "type": "redis",
+                    "parameters": _redis_connection_parameters(),
+                },
+            }
+        ],
+    }
+    config_file = tmp_path / "lifecycle_config.yml"
+    with open(config_file, "w") as f:
+        yaml.dump(config_data, f)
+
+    env = os.environ.copy()
+    env["OZWALD_CONFIG"] = str(config_file)
+    env["OZWALD_PROVISIONER"] = "lifecycle_prov"
+    env["OZWALD_FOOTPRINT_DATA"] = str(tmp_path / "footprints.yml")
+    repo_root = Path(__file__).resolve().parents[3]
+    env["PYTHONPATH"] = str(repo_root / "src")
+
+    bridge_eff = "oznet--test_lifecycle--bridge_net"
+    ipvlan_eff = "oznet--test_lifecycle--ipvlan_net"
+
+    # Cleanup any leftovers
+    subprocess.run(
+        ["docker", "network", "rm", bridge_eff, ipvlan_eff], check=False
+    )
+
+    # Start the daemon in a subprocess
+    proc = subprocess.Popen(
+        ["python3", "-m", "orchestration.provisioner"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    try:
+        # Wait for networks to be created
+        try:
+            _wait_for(
+                lambda: (
+                    _network_exists(bridge_eff) and _network_exists(ipvlan_eff)
+                ),
+                timeout=30,
+                description="networks created",
+            )
+        except AssertionError:
+            # Capture and show logs on failure
+            out, err = proc.communicate(timeout=5)
+            print(f"STDOUT: {out}")
+            print(f"STDERR: {err}")
+            raise
+
+        # Check ipvlan subnet
+        inspect = subprocess.run(
+            ["docker", "network", "inspect", ipvlan_eff],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "172.26." in inspect.stdout
+
+        # Stop daemon
+        proc.terminate()
+        # Give it time to run signal handlers
+        proc.wait(timeout=15)
+
+        # Verify networks are gone
+        assert not _network_exists(bridge_eff)
+        assert not _network_exists(ipvlan_eff)
+
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        subprocess.run(
+            ["docker", "network", "rm", bridge_eff, ipvlan_eff], check=False
+        )

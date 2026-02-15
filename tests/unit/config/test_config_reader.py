@@ -217,12 +217,13 @@ class TestNetworkParsing:
         cfg_path.write_text(_yaml.safe_dump(cfg))
         reader = ConfigReader(str(cfg_path))
 
-        assert len(reader.networks) == 2
-        assert all(isinstance(n, Network) for n in reader.networks)
-        assert reader.networks[0].name == "layer1"
-        assert reader.networks[0].realm == "default"
-        assert reader.networks[1].name == "layer2"
-        assert reader.networks[1].realm == "default"
+        networks = list(reader.networks())
+        assert len(networks) == 2
+        assert all(isinstance(n, Network) for n in networks)
+        assert networks[0].name == "layer1"
+        assert networks[0].realm == "default"
+        assert networks[1].name == "layer2"
+        assert networks[1].realm == "default"
 
     def test_service_networks_are_parsed(self, tmp_path):
         """Verify that networks in service definitions are parsed."""
@@ -1008,3 +1009,34 @@ class TestPersistentServiceParsing:
         assert len(persistent) == 2
         names = {ps.name for ps in persistent}
         assert names == {"s1", "s2"}
+
+
+class TestNetworkIterator:
+    """Tests for the networks() iterator in ConfigReader."""
+
+    def test_networks_iterator(self, tmp_path):
+        """Verify that networks() iterator yields all configured networks."""
+        config_data = {
+            "realms": {
+                "r1": {
+                    "networks": [
+                        {"name": "net1", "type": "bridge"},
+                        {"name": "net2", "type": "ipvlan"},
+                    ]
+                },
+                "r2": {
+                    "networks": [
+                        {"name": "net3", "type": "none"},
+                    ]
+                },
+            }
+        }
+        config_file = tmp_path / "networks_config.yml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        reader = ConfigReader(str(config_file))
+        networks = list(reader.networks())
+        assert len(networks) == 3
+        names = {n.name for n in networks}
+        assert names == {"net1", "net2", "net3"}

@@ -32,6 +32,11 @@ class Network(BaseModel):
     realm: str = "default"
 
 
+class NetworkInstance(BaseModel):
+    network: Network
+    ip_range: str | None = None
+
+
 # ============================================================================
 # Host Models
 # ============================================================================
