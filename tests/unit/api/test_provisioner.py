@@ -189,7 +189,7 @@ class TestUpdateServices:
         auth_header: dict[str, str],
         mocker,
     ) -> None:
-        """`/srv/services/active/update/` responds 202 and calls
+        """`/srv/services/dynamic/update/` responds 202 and calls
         `provisioner.update_active_services(...)` with parsed models.
         """
         # Payload to send (as JSON)
@@ -219,7 +219,7 @@ class TestUpdateServices:
         )
 
         resp = client.post(
-            "/srv/services/active/update/",
+            "/srv/services/dynamic/update/",
             json=payload,
             headers=auth_header,
         )
@@ -229,7 +229,8 @@ class TestUpdateServices:
         # Verify the call received a list of ServiceInformation models
         # matching the payload
         prov.update_active_services.assert_called_once()
-        (arg_list,), _ = prov.update_active_services.call_args
+        (arg_list,), kwargs = prov.update_active_services.call_args
+        assert kwargs.get("persistent") is False
         assert isinstance(arg_list, list)
 
         expected_models = [ServiceInformation(**item) for item in payload]
@@ -258,7 +259,7 @@ class TestUpdateServicesEmptyList:
         )
 
         resp = client.post(
-            "/srv/services/active/update/",
+            "/srv/services/dynamic/update/",
             json=[],
             headers=auth_header,
         )
@@ -266,7 +267,8 @@ class TestUpdateServicesEmptyList:
         assert resp.json()["status"] == "accepted"
 
         prov.update_active_services.assert_called_once()
-        (arg_list,), _ = prov.update_active_services.call_args
+        (arg_list,), kwargs = prov.update_active_services.call_args
+        assert kwargs.get("persistent") is False
         assert isinstance(arg_list, list)
         assert arg_list == []
 
@@ -287,7 +289,7 @@ class TestUpdateServicesEmptyList:
         )
 
         resp = client.post(
-            "/srv/services/active/update/",
+            "/srv/services/dynamic/update/",
             json=[],
             headers=auth_header,
         )
@@ -344,7 +346,7 @@ class TestUpdateServicesEmptyList:
             },
         ]
         resp = client.post(
-            "/srv/services/active/update/",
+            "/srv/services/dynamic/update/",
             json=payload,
             headers=auth_header,
         )

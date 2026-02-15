@@ -24,11 +24,11 @@ class TestCliUpdateServices:
 
         http_post = mocker.patch("util.cli.http_post", return_value=resp)
 
-        out = ucli.update_active_services(port=8123, body=[])
+        out = ucli.update_dynamic_services(port=8123, body=[])
         assert out["status"] == "accepted"
         http_post.assert_called_once()
         url = http_post.call_args[0][0]
-        assert "/srv/services/active/update/" in url
+        assert "/srv/services/dynamic/update/" in url
 
     def test_legacy_fallback_on_404(self, mocker):
         import util.cli as ucli
@@ -48,10 +48,10 @@ class TestCliUpdateServices:
             side_effect=[resp404, resp202],
         )
 
-        out = ucli.update_active_services(port=8123, body=[{"x": 1}])
+        out = ucli.update_dynamic_services(port=8123, body=[{"x": 1}])
         assert out["status"] == "accepted"
         assert http_post.call_count == 2
         url1 = http_post.call_args_list[0][0][0]
         url2 = http_post.call_args_list[1][0][0]
-        assert url1.endswith("/srv/services/active/update/")
+        assert url1.endswith("/srv/services/dynamic/update/")
         assert url2.endswith("/srv/services/update/")

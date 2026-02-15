@@ -145,14 +145,15 @@ class SystemProvisioner:
                 if not si.persistent:
                     raise ValueError(
                         f"Service {si.name} is not persistent, but "
-                        "update_active_services was called with persistent=True"
+                        "update_dynamic_services was called with "
+                        "persistent=True"
                     )
         elif persistent is False:
             for si in service_updates:
                 if si.persistent:
                     raise ValueError(
                         f"Service {si.name} is persistent, but "
-                        "update_active_services was called with "
+                        "update_dynamic_services was called with "
                         "persistent=False"
                     )
 
@@ -686,6 +687,53 @@ class SystemProvisioner:
                     )
                     break
 
+    def _init_persistent_services(self) -> None:
+        """Start all persistent services defined in the configuration."""
+        service_updates = []
+        for ps_decl in self.config_reader.persistent_services:
+            si = ServiceInformation(
+                name=ps_decl.name,
+                service=ps_decl.service,
+                realm=ps_decl.realm,
+                variety=ps_decl.variety,
+                profile=ps_decl.profile,
+                persistent=True,
+            )
+            service_updates.append(si)
+
+        if service_updates:
+            logger.info(
+                "Initializing %d persistent services", len(service_updates)
+            )
+            self.update_active_services(service_updates, persistent=True)
+
+    def _shutdown_persistent_services(self) -> None:
+        """Gracefully shutdown all persistent services."""
+        logger.info("Shutting down persistent services...")
+        # Request all persistent services to stop
+        self.update_active_services([], persistent=True)
+
+        # Wait for them to stop
+        start_time = time.time()
+        timeout = 60.0
+        while time.time() - start_time < timeout:
+            persistent_services = self.get_active_services(persistent=True)
+            if not persistent_services:
+                logger.info("All persistent services have stopped.")
+                return
+
+            # Process stop requests
+            try:
+                self._handle_requests()
+            except Exception as e:
+                logger.error("Error during persistent services shutdown: %s", e)
+
+            time.sleep(1.0)
+
+        logger.warning(
+            "Timeout reached while waiting for persistent services to stop."
+        )
+
     def run_backend_daemon(self):
         """Run the backend daemon
         - Loops until a termination signal is received
@@ -707,6 +755,9 @@ class SystemProvisioner:
 
         # Initialize services
         self._init_services()
+
+        # Start persistent services
+        self._init_persistent_services()
 
         # Graceful shutdown handling
         running = True
@@ -738,6 +789,9 @@ class SystemProvisioner:
                 logger.error("Backend daemon loop encountered an error: %s", e)
 
             time.sleep(BACKEND_DAEMON_SLEEP_TIME)
+
+        # Graceful shutdown of persistent services
+        self._shutdown_persistent_services()
 
         logger.info("Provisioner backend daemon stopped.")
 
