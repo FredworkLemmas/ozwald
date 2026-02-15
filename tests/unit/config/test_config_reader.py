@@ -934,3 +934,77 @@ class TestEffectiveServiceDefinition:
             "svc", None, None, realm="default"
         )
         assert eff3.networks == ["base-net"]
+
+
+class TestPersistentServiceParsing:
+    """Tests for parsing persistent services configurations."""
+
+    def test_persistent_services_are_parsed(self, tmp_path):
+        """Verify that persistent-services section in realms is
+        correctly parsed.
+        """
+        config_data = {
+            "realms": {
+                "prod": {
+                    "persistent-services": [
+                        {
+                            "name": "proxy",
+                            "service": "nginx",
+                            "variety": "stable",
+                        },
+                        {
+                            "name": "db",
+                            "service": "postgres",
+                            "profile": "high-perf",
+                        },
+                    ]
+                }
+            },
+            "service-definitions": [
+                {"name": "nginx", "type": "container"},
+                {"name": "postgres", "type": "container"},
+            ],
+        }
+        config_file = tmp_path / "persistent_config.yml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        reader = ConfigReader(str(config_file))
+        assert "prod" in reader.realms
+        realm = reader.realms["prod"]
+        assert len(realm.persistent_services) == 2
+
+        proxy = next(
+            ps for ps in realm.persistent_services if ps.name == "proxy"
+        )
+        assert proxy.service == "nginx"
+        assert proxy.variety == "stable"
+        assert proxy.realm == "prod"
+
+        db = next(ps for ps in realm.persistent_services if ps.name == "db")
+        assert db.service == "postgres"
+        assert db.profile == "high-perf"
+        assert db.realm == "prod"
+
+    def test_persistent_services_property(self, tmp_path):
+        """Verify that the persistent_services property yields all services."""
+        config_data = {
+            "realms": {
+                "r1": {
+                    "persistent-services": [{"name": "s1", "service": "svc"}]
+                },
+                "r2": {
+                    "persistent-services": [{"name": "s2", "service": "svc"}]
+                },
+            },
+            "service-definitions": [{"name": "svc", "type": "container"}],
+        }
+        config_file = tmp_path / "multi_realm_persistent.yml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        reader = ConfigReader(str(config_file))
+        persistent = list(reader.persistent_services)
+        assert len(persistent) == 2
+        names = {ps.name for ps in persistent}
+        assert names == {"s1", "s2"}

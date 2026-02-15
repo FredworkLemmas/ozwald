@@ -126,10 +126,20 @@ async def get_active_services(
 
 
 @app.post(
+    "/srv/services/dynamic/update/",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Update services (dynamic)",
+    description="Activate and deactivate non-persistent services",
+)
+@app.post(
     "/srv/services/active/update/",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Update services",
-    description="Activate and deactivate services",
+    include_in_schema=False,
+)
+@app.post(
+    "/srv/services/update/",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
 )
 async def update_active_services(
     service_updates: list[ServiceInformation],
@@ -149,7 +159,10 @@ async def update_active_services(
     """
     provisioner = SystemProvisioner.singleton()
     try:
-        updated = provisioner.update_active_services(service_updates)
+        updated = provisioner.update_active_services(
+            service_updates,
+            persistent=False,
+        )
     except ValueError as e:
         # Raised when a referenced service definition does not exist
         raise HTTPException(
@@ -172,21 +185,6 @@ async def update_active_services(
         )
 
     return {"status": "accepted", "message": "Service update request accepted"}
-
-
-# Backward-compatible alias for older clients/tests
-@app.post(
-    "/srv/services/update/",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Update services (legacy endpoint)",
-    description="Alias for /srv/services/active/update/",
-)
-async def update_active_services_legacy(
-    service_updates: list[ServiceInformation],
-    authenticated: bool = Depends(verify_system_key),
-) -> dict:
-    # type: ignore[arg-type]
-    return await update_active_services(service_updates, authenticated)
 
 
 @app.get(

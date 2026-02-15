@@ -10,6 +10,7 @@ from orchestration.models import (
     FootprintConfig,
     Host,
     Network,
+    PersistentServiceDeclaration,
     Provisioner,
     Realm,
     Resource,
@@ -209,11 +210,16 @@ class ConfigReader:
                 realm_data.get("service-definitions", []),
                 realm_name,
             )
+            persistent_services = self._parse_persistent_services(
+                realm_data.get("persistent-services", []),
+                realm_name,
+            )
 
             self.realms[realm_name] = Realm(
                 name=realm_name,
                 networks=networks,
                 service_definitions=services,
+                persistent_services=persistent_services,
             )
 
     def _parse_networks(self, networks_data: list, realm: str) -> list[Network]:
@@ -393,6 +399,37 @@ class ConfigReader:
             parsed_services.append(service_def)
 
         return parsed_services
+
+    def _parse_persistent_services(
+        self,
+        persistent_services_data: list,
+        realm: str,
+    ) -> list[PersistentServiceDeclaration]:
+        """Parse persistent-services section and create
+        PersistentServiceDeclaration models.
+        """
+        parsed_persistent_services = []
+        for i, ps_data in enumerate(persistent_services_data):
+            if "name" not in ps_data:
+                raise KeyError(
+                    f"Persistent service entry at index {i} in realm '{realm}' "
+                    "is missing 'name'"
+                )
+            if "service" not in ps_data:
+                raise KeyError(
+                    f"Persistent service entry at index {i} in realm '{realm}' "
+                    "is missing 'service'"
+                )
+
+            ps_decl = PersistentServiceDeclaration(
+                name=ps_data["name"],
+                service=ps_data["service"],
+                realm=realm,
+                variety=ps_data.get("variety"),
+                profile=ps_data.get("profile"),
+            )
+            parsed_persistent_services.append(ps_decl)
+        return parsed_persistent_services
 
     def _normalize_service_volumes(self, raw_vols) -> List[str]:
         """Return a list of docker-ready volume strings.
@@ -677,6 +714,15 @@ class ConfigReader:
             or ["default"],
             footprint=merged_footprint,
         )
+
+    @property
+    def persistent_services(self) -> Iterable[PersistentServiceDeclaration]:
+        """Yield an iterator of all PersistentServiceDeclaration objects
+        across all realms.
+        """
+        for realm in self.realms.values():
+            if realm.persistent_services:
+                yield from realm.persistent_services
 
     @property
     def defined_networks(self) -> Iterable[Network]:

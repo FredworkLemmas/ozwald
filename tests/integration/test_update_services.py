@@ -115,7 +115,7 @@ def test_update_services_persists_to_redis():
     ]
 
     resp = requests.post(
-        _api_base() + "/srv/services/active/update/",
+        _api_base() + "/srv/services/dynamic/update/",
         headers=_auth_headers(),
         json=body,
         timeout=5,
@@ -152,7 +152,7 @@ def test_update_services_rejects_invalid_payload_shape():
     if the payload is not a list.
     """
     resp = requests.post(
-        _api_base() + "/srv/services/active/update/",
+        _api_base() + "/srv/services/dynamic/update/",
         headers=_auth_headers(),
         json={"not": "a list"},
         timeout=5,
@@ -174,7 +174,7 @@ def test_update_services_rejects_unknown_service():
         },
     ]
     resp = requests.post(
-        _api_base() + "/srv/services/active/update/",
+        _api_base() + "/srv/services/dynamic/update/",
         headers=_auth_headers(),
         json=body,
         timeout=5,

@@ -102,6 +102,7 @@ def provisioner_env(monkeypatch, tmp_path):
         def __init__(self, type_value: str = "dummy-type"):
             self._type_value = type_value
             self.services = []
+            self.persistent_services = []
             self.provisioners = []
             self.defined_networks = []
 

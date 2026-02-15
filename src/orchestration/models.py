@@ -220,12 +220,23 @@ class ServiceInformation(BaseModel):
     info: dict[str, Any] | None = {}  # None on request, dict on response
 
 
+class PersistentServiceDeclaration(BaseModel):
+    name: str
+    service: str
+    realm: str = "default"
+    variety: str | None = None
+    profile: str | None = None
+
+
 # ============================================================================
 # Realm Models
 # ============================================================================
 class Realm(BaseModel):
     name: str
     service_definitions: list[ServiceDefinition] | None = Field(
+        default_factory=list
+    )
+    persistent_services: list[PersistentServiceDeclaration] | None = Field(
         default_factory=list
     )
     networks: list[Network] | None = Field(default_factory=list)

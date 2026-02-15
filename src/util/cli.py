@@ -79,7 +79,7 @@ def get_openapi_spec(
     return data
 
 
-def update_active_services(
+def update_dynamic_services(
     *,
     port: int = 8000,
     body: list[dict[str, Any]] | list[Any],
@@ -90,7 +90,7 @@ def update_active_services(
     Tries the primary path first, then falls back to the legacy path
     if the primary returns 404.
     """
-    primary = f"http://localhost:{port}/srv/services/active/update/"
+    primary = f"http://localhost:{port}/srv/services/dynamic/update/"
     legacy = f"http://localhost:{port}/srv/services/update/"
     headers = _auth_headers(system_key)
 
@@ -101,7 +101,7 @@ def update_active_services(
     data = resp.json()
     if not isinstance(data, dict):
         raise ValueError(
-            "Unexpected response format for update_active_services"
+            "Unexpected response format for update_dynamic_services"
         )
     return data
 
