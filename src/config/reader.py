@@ -43,7 +43,7 @@ class ConfigReader:
         self.hosts: List[Host] = []
         self.service_definitions: List[ServiceDefinition] = []
         self.provisioners: List[Provisioner] = []
-        self.networks: List[Network] = []
+        self._networks_list: List[Network] = []
         self.realms: Dict[str, Realm] = {}
         # Top-level named volumes (normalized)
         self.volumes: Dict[str, Dict[str, Any]] = {}
@@ -236,7 +236,7 @@ class ConfigReader:
                 type=network_data.get("type", "bridge"),
                 realm=realm,
             )
-            self.networks.append(network)
+            self._networks_list.append(network)
             parsed_networks.append(network)
         return parsed_networks
 
@@ -566,7 +566,7 @@ class ConfigReader:
 
     def get_network_by_name(self, name: str, realm: str) -> Optional[Network]:
         """Get a network by name and realm."""
-        for network in self.networks:
+        for network in self._networks_list:
             if network.name == name and network.realm == realm:
                 return network
         return None
@@ -724,10 +724,14 @@ class ConfigReader:
             if realm.persistent_services:
                 yield from realm.persistent_services
 
+    def networks(self) -> Iterable[Network]:
+        """Yield an iterator of all Network objects across all realms."""
+        return iter(self._networks_list)
+
     @property
     def defined_networks(self) -> Iterable[Network]:
         """Iterator that yields all networks defined as Network objects."""
-        return iter(self.networks)
+        return iter(self._networks_list)
 
     # No action/mode lookups in simplified schema.
 

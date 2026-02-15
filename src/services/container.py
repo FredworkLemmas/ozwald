@@ -80,19 +80,7 @@ class ContainerService(BaseProvisionableService):
 
     @classmethod
     def init_service(cls):
-        """Initialize the container service by creating all defined networks."""
-        from config.reader import SystemConfigReader
-
-        reader = SystemConfigReader.singleton()
-        for network in reader.defined_networks:
-            eff_name = cls.effective_network_name(network)
-            logger.info(f"Ensuring network {eff_name} exists")
-            subprocess.run(
-                ["docker", "network", "create", eff_name],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+        """Initialize the container service."""
 
     # --- Lifecycle: start/stop container ---
     def start(self):
