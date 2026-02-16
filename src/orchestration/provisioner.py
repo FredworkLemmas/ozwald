@@ -21,6 +21,7 @@ from .models import (
     Cache,
     ConfiguredServiceIdentifier,
     FootprintAction,
+    NetworkInstance,
     Resource,
     ServiceDefinition,
     ServiceInformation,
@@ -55,6 +56,7 @@ class SystemProvisioner:
         self._footprint_request_cache = (
             FootprintRequestCache(cache) if cache else None
         )
+        self._provisioned_networks: List[NetworkInstance] = []
 
     def get_cache(self) -> Cache:
         return self._cache
@@ -761,6 +763,9 @@ class SystemProvisioner:
 
         # Initialize services
         self._init_services()
+
+        # Initialize networks
+        self._init_networks()
 
         # Start persistent services
         self._init_persistent_services()
