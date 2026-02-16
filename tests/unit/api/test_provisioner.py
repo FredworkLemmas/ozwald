@@ -145,7 +145,7 @@ class TestConfiguredServices:
 
         resp = client.get("/srv/services/configured/", headers=auth_header)
         assert resp.status_code == 200
-        assert resp.json() == [d.model_dump() for d in defs]
+        assert resp.json() == [d.model_dump(by_alias=True) for d in defs]
         prov.get_configured_services.assert_called_once_with()
 
 

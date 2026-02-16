@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -37,6 +37,17 @@ class NetworkInstance(BaseModel):
     ip_range: str | None = None
 
 
+class PortalBridgeConnection(BaseModel):
+    realm: str
+    connector: str
+
+
+class Portal(BaseModel):
+    name: str
+    bridge: PortalBridgeConnection
+    port: int
+
+
 # ============================================================================
 # Host Models
 # ============================================================================
@@ -50,6 +61,8 @@ class Host(BaseModel):
 # Footprint Models
 # ============================================================================
 class FootprintConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     run_time: int | None = Field(default=None, alias="run-time")
     run_script: str | None = Field(default=None, alias="run-script")
 
@@ -83,6 +96,12 @@ class FootprintLogLines(BaseModel):
 # ============================================================================
 # Service Definition Models (Templates)
 # ============================================================================
+class BridgeConnector(BaseModel):
+    port: int
+    name: str
+    network: str = "default"
+
+
 class ServiceType(str, Enum):
     """Common service type identifiers used across the system.
 
@@ -97,6 +116,8 @@ class ServiceType(str, Enum):
 
 
 class ServiceDefinitionProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     description: str | None = None
     image: str | None = None
@@ -109,11 +130,17 @@ class ServiceDefinitionProfile(BaseModel):
     # "named_vol:/ctr:rw"
     volumes: list[str] = Field(default_factory=list)
     networks: list[str] | None = None
+    bridge_connector: BridgeConnector | None = Field(
+        default=None,
+        alias="bridge-connector",
+    )
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
 
 class ServiceDefinitionVariety(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     image: str | None
     depends_on: list[str] | None = Field(default_factory=list)
     command: list[str] | str | None = None
@@ -123,11 +150,17 @@ class ServiceDefinitionVariety(BaseModel):
     # Normalized docker volume strings, same format as on the base service
     volumes: list[str] = Field(default_factory=list)
     networks: list[str] | None = None
+    bridge_connector: BridgeConnector | None = Field(
+        default=None,
+        alias="bridge-connector",
+    )
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
 
 class ServiceDefinition(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     service_name: str
     realm: str = "default"
     type: str | ServiceType
@@ -146,6 +179,10 @@ class ServiceDefinition(BaseModel):
     # "/abs/host:/ctr[:ro|rw]" or "named_vol:/ctr[:ro|rw]".
     volumes: list[str] | None = Field(default_factory=list)
     networks: list[str] = Field(default_factory=list)
+    bridge_connector: BridgeConnector | None = Field(
+        default=None,
+        alias="bridge-connector",
+    )
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
     profiles: dict[str, ServiceDefinitionProfile] | None = Field(
@@ -163,6 +200,8 @@ class ServiceDefinition(BaseModel):
 
 
 class EffectiveServiceDefinition(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     realm: str = ""
     image: str = ""
     environment: dict[str, Any] = Field(default_factory=dict)
@@ -172,6 +211,10 @@ class EffectiveServiceDefinition(BaseModel):
     env_file: list[str] = Field(default_factory=list)
     volumes: list[str] = Field(default_factory=list)
     networks: list[str] = Field(default_factory=list)
+    bridge_connector: BridgeConnector | None = Field(
+        default=None,
+        alias="bridge-connector",
+    )
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
 
@@ -274,6 +317,8 @@ class Provisioner(BaseModel):
 # Root Configuration Model
 # ============================================================================
 class OzwaldConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     hosts: list[Host] = Field(default_factory=list)
     realms: dict[str, Realm] = Field(default_factory=dict)
     service_definitions: list[ServiceDefinition] = Field(
@@ -284,6 +329,7 @@ class OzwaldConfig(BaseModel):
     networks: list[Network] = Field(default_factory=list)
     # Top-level named volume specifications (parsed/normalized by reader)
     volumes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    portals: list[Portal] = Field(default_factory=list)
 
 
 # ============================================================================

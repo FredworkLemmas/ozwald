@@ -84,7 +84,25 @@ class ContainerService(BaseProvisionableService):
     @classmethod
     def init_service(cls):
         """Initialize the container service."""
+        cls._validate_portals()
         cls._init_networks()
+
+    @classmethod
+    def _validate_portals(cls) -> None:
+        """Validate that all portals specify unique host ports."""
+        from config.reader import SystemConfigReader
+
+        reader = SystemConfigReader.singleton()
+        portals = reader.portals()
+
+        ports = {}
+        for portal in portals:
+            if portal.port in ports:
+                raise ValueError(
+                    f"Duplicate portal port {portal.port} defined in portals: "
+                    f"'{ports[portal.port]}' and '{portal.name}'"
+                )
+            ports[portal.port] = portal.name
 
     @classmethod
     def deinit_service(cls):
@@ -518,10 +536,27 @@ class ContainerService(BaseProvisionableService):
 
     def get_container_options__port(self) -> list[str]:
         port_opts = []
+
+        # Bridge connector logic
+        bridge_connector = self.effective_definition.bridge_connector
+        if bridge_connector:
+            from config.reader import SystemConfigReader
+
+            reader = SystemConfigReader.singleton()
+            for portal in reader.portals():
+                if (
+                    portal.bridge.connector == bridge_connector.name
+                    and portal.bridge.realm == self._service_info.realm
+                ):
+                    port_opts.extend(
+                        ["-p", f"{portal.port}:{bridge_connector.port}"],
+                    )
+
+        # Legacy logic
         internal_port = self.get_internal_container_port()
         external_port = self.get_external_container_port()
         if external_port is not None and internal_port is not None:
-            port_opts = ["-p", f"{external_port}:{internal_port}"]
+            port_opts.extend(["-p", f"{external_port}:{internal_port}"])
         return port_opts
 
     def get_container_options__volume(self) -> list[str]:

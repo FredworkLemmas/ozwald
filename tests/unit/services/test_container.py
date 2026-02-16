@@ -488,6 +488,7 @@ class TestContainerServiceLifecycle:
         from config.reader import SystemConfigReader
 
         mock_reader = mocker.Mock()
+        mock_reader.portals.return_value = []
         mocker.patch.object(
             SystemConfigReader, "singleton", return_value=mock_reader
         )
