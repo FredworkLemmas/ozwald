@@ -137,10 +137,10 @@ def provisioner_env(monkeypatch, tmp_path):
     # Expose internals for tests to seed/inspect cache
     fake_cache: FakeActiveServicesCache = prov._active_services_cache  # type: ignore[attr-defined]
 
-    # Mock out network and persistent service initialization to avoid
+    # Mock out service initialization to avoid
     # side effects (Docker, Redis singleton calls)
-    monkeypatch.setattr(prov, "_init_networks", lambda: None)
-    monkeypatch.setattr(prov, "_deprovision_networks", lambda: None)
+    monkeypatch.setattr(prov, "_init_services", lambda: None)
+    monkeypatch.setattr(prov, "_deinit_services", lambda: None)
     monkeypatch.setattr(prov, "_init_persistent_services", lambda: None)
     monkeypatch.setattr(prov, "_shutdown_persistent_services", lambda: None)
 

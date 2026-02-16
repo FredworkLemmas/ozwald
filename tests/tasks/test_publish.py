@@ -30,7 +30,7 @@ class TestPublishRelease:
         cmd = c.calls[0][0]
         assert "uv publish" in cmd
         assert "test-token-123" in cmd
-        assert "https://test.pypi.org/legacy/" in cmd
+        assert "--index testpypi" in cmd
 
     def test_uses_pypi_when_flag_false(self, monkeypatch):
         from tasks import publish as pub
@@ -44,7 +44,7 @@ class TestPublishRelease:
         cmd = c.calls[0][0]
         assert "uv publish" in cmd
         assert "real-token-xyz" in cmd
-        assert "https://upload.pypi.org/legacy/" in cmd
+        assert "--index" not in cmd
 
     def test_build_runs_before_publish(self, monkeypatch):
         from tasks import publish as pub

@@ -5,12 +5,15 @@ from typing import Any, Dict, Iterable, List, Optional
 import yaml
 
 from orchestration.models import (
+    BridgeConnector,
     Cache,
     EffectiveServiceDefinition,
     FootprintConfig,
     Host,
     Network,
     PersistentServiceDeclaration,
+    Portal,
+    PortalBridgeConnection,
     Provisioner,
     Realm,
     Resource,
@@ -44,6 +47,7 @@ class ConfigReader:
         self.service_definitions: List[ServiceDefinition] = []
         self.provisioners: List[Provisioner] = []
         self._networks_list: List[Network] = []
+        self._portals: List[Portal] = []
         self.realms: Dict[str, Realm] = {}
         # Top-level named volumes (normalized)
         self.volumes: Dict[str, Dict[str, Any]] = {}
@@ -73,6 +77,7 @@ class ConfigReader:
         self._parse_volumes()
         self._parse_realms()
         self._parse_provisioners()
+        self._parse_portals()
 
     # ---------------- Internal helpers -----------------
 
@@ -282,6 +287,13 @@ class ConfigReader:
                 else None
             )
 
+            parent_bridge_connector_data = service_data.get("bridge-connector")
+            parent_bridge_connector = (
+                BridgeConnector(**parent_bridge_connector_data)
+                if parent_bridge_connector_data
+                else None
+            )
+
             # Parse profiles (support both dict-of-dicts and list-of-dicts)
             profiles: List[ServiceDefinitionProfile] = []
             raw_profiles = service_data.get("profiles", {})
@@ -318,6 +330,16 @@ class ConfigReader:
                     else None
                 )
 
+                # bridge connector
+                profile_bridge_connector_data = profile_data.get(
+                    "bridge-connector",
+                )
+                profile_bridge_connector = (
+                    BridgeConnector(**profile_bridge_connector_data)
+                    if profile_bridge_connector_data
+                    else None
+                )
+
                 profile = ServiceDefinitionProfile(
                     name=name,
                     description=profile_data.get("description"),
@@ -330,6 +352,7 @@ class ConfigReader:
                     properties=properties,
                     volumes=prof_vols,
                     networks=networks,
+                    bridge_connector=profile_bridge_connector,
                     footprint=profile_footprint,
                 )
                 profiles.append(profile)
@@ -349,6 +372,12 @@ class ConfigReader:
                     if v_footprint_data
                     else None
                 )
+                v_bridge_connector_data = variety_data.get("bridge-connector")
+                v_bridge_connector = (
+                    BridgeConnector(**v_bridge_connector_data)
+                    if v_bridge_connector_data
+                    else None
+                )
                 v = ServiceDefinitionVariety(
                     image=variety_data.get("image"),
                     depends_on=variety_data.get("depends_on"),
@@ -359,6 +388,7 @@ class ConfigReader:
                     properties=variety_data.get("properties"),
                     volumes=v_vols,
                     networks=variety_data.get("networks"),
+                    bridge_connector=v_bridge_connector,
                     footprint=v_footprint,
                 )
                 varieties[variety_name] = v
@@ -391,6 +421,7 @@ class ConfigReader:
                 properties=parent_properties,
                 volumes=svc_vols,
                 networks=parent_networks,
+                bridge_connector=parent_bridge_connector,
                 footprint=parent_footprint,
                 profiles=profiles_dict,
                 varieties=varieties,
@@ -557,6 +588,24 @@ class ConfigReader:
             )
             self.provisioners.append(provisioner)
 
+    def _parse_portals(self) -> None:
+        """Parse portals section and create Portal models."""
+        portals_data = self._raw_config.get("portals", [])
+        if not portals_data:
+            return
+        for portal_data in portals_data:
+            bridge_data = portal_data.get("bridge", {})
+            bridge = PortalBridgeConnection(
+                realm=bridge_data.get("realm", "default"),
+                connector=bridge_data.get("connector"),
+            )
+            portal = Portal(
+                name=portal_data.get("name"),
+                bridge=bridge,
+                port=portal_data.get("port"),
+            )
+            self._portals.append(portal)
+
     def get_host_by_name(self, name: str) -> Optional[Host]:
         """Get a host by name."""
         for host in self.hosts:
@@ -614,6 +663,7 @@ class ConfigReader:
         base_image = sd.image
         base_vols = list(sd.volumes or [])
         base_networks = sd.networks or []
+        base_bridge_connector = sd.bridge_connector
 
         v = (sd.varieties or {}).get(variety) if variety else None
         v_env = (v.environment if v else None) or {}
@@ -625,6 +675,7 @@ class ConfigReader:
         v_image = (v.image if v else None) or None
         v_vols = list(getattr(v, "volumes", []) or [])
         v_networks = list(getattr(v, "networks", []) or [])
+        v_bridge_connector = getattr(v, "bridge_connector", None)
 
         p = (sd.profiles or {}).get(profile) if profile else None
         p_env = (p.environment if p else None) or {}
@@ -636,6 +687,7 @@ class ConfigReader:
         p_image = (p.image if p else None) or None
         p_vols = list(getattr(p, "volumes", []) or [])
         p_networks = list(getattr(p, "networks", []) or [])
+        p_bridge_connector = getattr(p, "bridge_connector", None)
 
         merged_env = {**base_env, **v_env, **p_env}
         merged_props = {**base_props, **v_props, **p_props}
@@ -712,6 +764,11 @@ class ConfigReader:
             volumes=merged_vols,
             networks=choose(p_networks, v_networks, base_networks)
             or ["default"],
+            bridge_connector=choose(
+                p_bridge_connector,
+                v_bridge_connector,
+                base_bridge_connector,
+            ),
             footprint=merged_footprint,
         )
 
@@ -732,6 +789,10 @@ class ConfigReader:
     def defined_networks(self) -> Iterable[Network]:
         """Iterator that yields all networks defined as Network objects."""
         return iter(self._networks_list)
+
+    def portals(self) -> List[Portal]:
+        """Return the list of parsed portals."""
+        return self._portals
 
     # No action/mode lookups in simplified schema.
 

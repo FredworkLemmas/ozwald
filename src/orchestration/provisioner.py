@@ -736,124 +736,11 @@ class SystemProvisioner:
             "Timeout reached while waiting for persistent services to stop."
         )
 
-    def _init_networks(self) -> None:
-        """Initialize all configured networks."""
-        from services.container import ContainerService
-        from util.class_c_registry import ClassCRegistry
-
-        registry = ClassCRegistry.singleton()
-
-        # Get existing docker networks
-        try:
-            result = subprocess.run(
-                ["docker", "network", "ls", "--format", "{{.Name}}"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            existing_networks = result.stdout.splitlines()
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to list docker networks: {e}")
-            existing_networks = []
-
-        for network in self.config_reader.networks():
-            eff_name = ContainerService.effective_network_name(network)
-            if eff_name in existing_networks:
-                logger.info(f"Network {eff_name} already exists")
-                ip_range = self._get_docker_network_subnet(eff_name)
-                self._provisioned_networks.append(
-                    NetworkInstance(network=network, ip_range=ip_range)
-                )
-                continue
-
-            ip_range = None
-            if network.type == "bridge":
-                logger.info(f"Creating bridge network {eff_name}")
-                subprocess.run(
-                    [
-                        "docker",
-                        "network",
-                        "create",
-                        "--driver",
-                        "bridge",
-                        eff_name,
-                    ],
-                    check=True,
-                )
-            elif network.type == "ipvlan":
-                ip_range = registry.checkout_network()
-                logger.info(
-                    f"Creating ipvlan network {eff_name} with subnet {ip_range}"
-                )
-                subprocess.run(
-                    [
-                        "docker",
-                        "network",
-                        "create",
-                        "--driver",
-                        "ipvlan",
-                        "--subnet",
-                        ip_range,
-                        eff_name,
-                    ],
-                    check=True,
-                )
-            elif network.type == "none":
-                logger.info(
-                    f"Network type 'none' for {network.name}, skipping creation"
-                )
-            else:
-                logger.warning(
-                    f"Unknown network type {network.type} for {network.name}"
-                )
-
-            self._provisioned_networks.append(
-                NetworkInstance(network=network, ip_range=ip_range)
-            )
-
-    def _get_docker_network_subnet(self, network_name: str) -> Optional[str]:
-        """Fetch subnet for an existing docker network."""
-        try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "network",
-                    "inspect",
-                    "--format",
-                    "{{range .IPAM.Config}}{{.Subnet}}{{end}}",
-                    network_name,
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            subnet = result.stdout.strip()
-            return subnet if subnet else None
-        except Exception:
-            return None
-
-    def _deprovision_networks(self) -> None:
-        """Deprovision all configured networks."""
-        from services.container import ContainerService
-        from util.class_c_registry import ClassCRegistry
-
-        registry = ClassCRegistry.singleton()
-
-        for instance in self._provisioned_networks:
-            eff_name = ContainerService.effective_network_name(instance.network)
-            if instance.network.type == "none":
-                continue
-
-            logger.info(f"Removing network {eff_name}")
-            subprocess.run(
-                ["docker", "network", "rm", eff_name],
-                check=False,
-            )
-
-            if instance.network.type == "ipvlan" and instance.ip_range:
-                registry.release_network(instance.ip_range)
-
-        self._provisioned_networks = []
+    def _deinit_services(self) -> None:
+        """Call deinit_service class method for each service class."""
+        for svc_cls in BaseProvisionableService.get_service_classes():
+            logger.info("Deinitializing service class: %s", svc_cls.__name__)
+            svc_cls.deinit_service()
 
     def run_backend_daemon(self):
         """Run the backend daemon
@@ -894,7 +781,7 @@ class SystemProvisioner:
                 signum,
             )
             running = False
-            self._deprovision_networks()
+            self._deinit_services()
 
         try:
             signal.signal(signal.SIGINT, _handle_signal)
@@ -917,6 +804,9 @@ class SystemProvisioner:
 
         # Graceful shutdown of persistent services
         self._shutdown_persistent_services()
+
+        # Final deinitialization of all service types
+        self._deinit_services()
 
         logger.info("Provisioner backend daemon stopped.")
 

@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 from hosts.resources import HostResources
 from orchestration.models import (
     EffectiveServiceDefinition,
+    NetworkInstance,
     ServiceInformation,
 )
 from orchestration.provisioner import SystemProvisioner
@@ -22,6 +23,8 @@ logger = get_logger(__name__)
 
 class ContainerService(BaseProvisionableService):
     service_type: ClassVar[str] = "container"
+
+    _provisioned_networks: ClassVar[list[NetworkInstance]] = []
 
     # Container-specific configuration (class defaults, overridable per
     # instance via __init__ kwargs)
@@ -81,6 +84,152 @@ class ContainerService(BaseProvisionableService):
     @classmethod
     def init_service(cls):
         """Initialize the container service."""
+        cls._validate_portals()
+        cls._init_networks()
+
+    @classmethod
+    def _validate_portals(cls) -> None:
+        """Validate that all portals specify unique host ports."""
+        from config.reader import SystemConfigReader
+
+        reader = SystemConfigReader.singleton()
+        portals = reader.portals()
+
+        ports = {}
+        for portal in portals:
+            if portal.port in ports:
+                raise ValueError(
+                    f"Duplicate portal port {portal.port} defined in portals: "
+                    f"'{ports[portal.port]}' and '{portal.name}'"
+                )
+            ports[portal.port] = portal.name
+
+    @classmethod
+    def deinit_service(cls):
+        """Deinitialize the container service."""
+        cls._deprovision_networks()
+
+    @classmethod
+    def _init_networks(cls) -> None:
+        """Initialize all configured networks."""
+        from config.reader import SystemConfigReader
+        from util.class_c_registry import ClassCRegistry
+
+        registry = ClassCRegistry.singleton()
+        config_reader = SystemConfigReader.singleton()
+
+        # Get existing docker networks
+        try:
+            result = subprocess.run(
+                ["docker", "network", "ls", "--format", "{{.Name}}"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            existing_networks = result.stdout.splitlines()
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to list docker networks: {e}")
+            existing_networks = []
+
+        for network in config_reader.networks():
+            eff_name = cls.effective_network_name(network)
+            if eff_name in existing_networks:
+                logger.info(f"Network {eff_name} already exists")
+                ip_range = cls._get_docker_network_subnet(eff_name)
+                cls._provisioned_networks.append(
+                    NetworkInstance(network=network, ip_range=ip_range)
+                )
+                continue
+
+            ip_range = None
+            if network.type == "bridge":
+                logger.info(f"Creating bridge network {eff_name}")
+                subprocess.run(
+                    [
+                        "docker",
+                        "network",
+                        "create",
+                        "--driver",
+                        "bridge",
+                        eff_name,
+                    ],
+                    check=True,
+                )
+            elif network.type == "ipvlan":
+                ip_range = registry.checkout_network()
+                logger.info(
+                    f"Creating ipvlan network {eff_name} with subnet {ip_range}"
+                )
+                subprocess.run(
+                    [
+                        "docker",
+                        "network",
+                        "create",
+                        "--driver",
+                        "ipvlan",
+                        "--subnet",
+                        ip_range,
+                        eff_name,
+                    ],
+                    check=True,
+                )
+            elif network.type == "none":
+                logger.info(
+                    f"Network type 'none' for {network.name}, skipping creation"
+                )
+            else:
+                logger.warning(
+                    f"Unknown network type {network.type} for {network.name}"
+                )
+
+            cls._provisioned_networks.append(
+                NetworkInstance(network=network, ip_range=ip_range)
+            )
+
+    @classmethod
+    def _get_docker_network_subnet(cls, network_name: str) -> str | None:
+        """Fetch subnet for an existing docker network."""
+        try:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "network",
+                    "inspect",
+                    "--format",
+                    "{{range .IPAM.Config}}{{.Subnet}}{{end}}",
+                    network_name,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            subnet = result.stdout.strip()
+            return subnet if subnet else None
+        except Exception:
+            return None
+
+    @classmethod
+    def _deprovision_networks(cls) -> None:
+        """Deprovision all configured networks."""
+        from util.class_c_registry import ClassCRegistry
+
+        registry = ClassCRegistry.singleton()
+
+        for instance in cls._provisioned_networks:
+            eff_name = cls.effective_network_name(instance.network)
+            if instance.network.type == "none":
+                continue
+
+            logger.info(f"Removing network {eff_name}")
+            subprocess.run(
+                ["docker", "network", "rm", eff_name],
+                check=False,
+            )
+
+            if instance.network.type == "ipvlan" and instance.ip_range:
+                registry.release_network(instance.ip_range)
+
+        cls._provisioned_networks = []
 
     # --- Lifecycle: start/stop container ---
     def start(self):
@@ -387,10 +536,27 @@ class ContainerService(BaseProvisionableService):
 
     def get_container_options__port(self) -> list[str]:
         port_opts = []
+
+        # Bridge connector logic
+        bridge_connector = self.effective_definition.bridge_connector
+        if bridge_connector:
+            from config.reader import SystemConfigReader
+
+            reader = SystemConfigReader.singleton()
+            for portal in reader.portals():
+                if (
+                    portal.bridge.connector == bridge_connector.name
+                    and portal.bridge.realm == self._service_info.realm
+                ):
+                    port_opts.extend(
+                        ["-p", f"{portal.port}:{bridge_connector.port}"],
+                    )
+
+        # Legacy logic
         internal_port = self.get_internal_container_port()
         external_port = self.get_external_container_port()
         if external_port is not None and internal_port is not None:
-            port_opts = ["-p", f"{external_port}:{internal_port}"]
+            port_opts.extend(["-p", f"{external_port}:{internal_port}"])
         return port_opts
 
     def get_container_options__volume(self) -> list[str]:

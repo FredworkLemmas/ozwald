@@ -49,6 +49,10 @@ realms:
         type: container
         description: Simple test service
         image: 'simple_test_1'
+        bridge-connector:
+          port: 80
+          name: main-api-port
+          network: default
 
       - name: test_env_and_vols
         type: container
@@ -160,3 +164,10 @@ volumes:
   solar_system:
     type: bind
     source: ${SETTINGS_FILE_DIR}/solar_system
+
+portals:
+  - name: main-api
+    bridge:
+      realm: default
+      connector: main-api-port
+    port: 7656

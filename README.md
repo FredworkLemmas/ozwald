@@ -128,6 +128,16 @@ realms:
             environment:
               GPU_MEMORY_UTILIZATION: 0.9
               CPU_OFFLOAD_GB: ""
+        bridge-connector:
+          port: 8000
+          name: api-connector
+
+portals:
+  - name: public-api
+    port: 7656
+    bridge:
+      realm: default
+      connector: api-connector
 ```
 
 2) **Set the mandatory environment variables**
@@ -174,7 +184,8 @@ Configuration reference
   (Redis).
 - `realms`: Groups for `networks` and `service-definitions`.
 - `service-definitions[]`: Descriptions of services, including hardware
-  `varieties` and runtime `profiles`.
+  `varieties`, runtime `profiles`, and `bridge-connector` settings.
+- `portals[]`: Mapping host ports to bridge connectors in specific realms.
 
 CLI usage
 ---------
