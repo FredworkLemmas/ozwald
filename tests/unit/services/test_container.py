@@ -476,3 +476,104 @@ class TestContainerServiceEffectiveFields:
         eff = cs.effective_definition
         assert eff.footprint.run_time == 60
         assert eff.footprint.run_script == "var.sh"
+
+
+class TestContainerServiceLifecycle:
+    @pytest.fixture
+    def mock_subprocess_run(self, mocker):
+        return mocker.patch("subprocess.run")
+
+    @pytest.fixture
+    def mock_config_reader(self, mocker):
+        from config.reader import SystemConfigReader
+
+        mock_reader = mocker.Mock()
+        mocker.patch.object(
+            SystemConfigReader, "singleton", return_value=mock_reader
+        )
+        return mock_reader
+
+    @pytest.fixture
+    def mock_registry(self, mocker):
+        from util.class_c_registry import ClassCRegistry
+
+        mock_reg = mocker.Mock()
+        mocker.patch.object(ClassCRegistry, "singleton", return_value=mock_reg)
+        return mock_reg
+
+    def test_init_service_creates_networks(
+        self, mock_subprocess_run, mock_config_reader, mock_registry, mocker
+    ):
+        from orchestration.models import Network
+
+        # Mock networks in config
+        net1 = Network(name="net1", realm="r1", type="bridge")
+        net2 = Network(name="net2", realm="r1", type="ipvlan")
+        mock_config_reader.networks.return_value = [net1, net2]
+
+        # Mock docker network ls
+        mock_subprocess_run.side_effect = [
+            mocker.Mock(stdout="", returncode=0),  # network ls
+            mocker.Mock(returncode=0),  # network create bridge
+            mocker.Mock(returncode=0),  # network create ipvlan
+        ]
+
+        mock_registry.checkout_network.return_value = "10.0.0.0/24"
+
+        ContainerService._provisioned_networks = []
+        ContainerService.init_service()
+
+        assert len(ContainerService._provisioned_networks) == 2
+        assert ContainerService._provisioned_networks[0].network == net1
+        assert ContainerService._provisioned_networks[1].network == net2
+        assert (
+            ContainerService._provisioned_networks[1].ip_range == "10.0.0.0/24"
+        )
+
+        # Verify docker calls
+        calls = [c[0][0] for c in mock_subprocess_run.call_args_list]
+        assert ["docker", "network", "ls", "--format", "{{.Name}}"] in calls
+        assert [
+            "docker",
+            "network",
+            "create",
+            "--driver",
+            "bridge",
+            "oznet--r1--net1",
+        ] in calls
+        assert [
+            "docker",
+            "network",
+            "create",
+            "--driver",
+            "ipvlan",
+            "--subnet",
+            "10.0.0.0/24",
+            "oznet--r1--net2",
+        ] in calls
+
+    def test_deinit_service_removes_networks(
+        self, mock_subprocess_run, mock_registry, mocker
+    ):
+        from orchestration.models import Network, NetworkInstance
+
+        net1 = Network(name="net1", realm="r1", type="bridge")
+        net2 = Network(name="net2", realm="r1", type="ipvlan")
+        ContainerService._provisioned_networks = [
+            NetworkInstance(network=net1, ip_range=None),
+            NetworkInstance(network=net2, ip_range="10.0.0.0/24"),
+        ]
+
+        mock_subprocess_run.return_value = mocker.Mock(returncode=0)
+
+        ContainerService.deinit_service()
+
+        assert ContainerService._provisioned_networks == []
+
+        # Verify docker rm calls
+        calls = [c[0][0] for c in mock_subprocess_run.call_args_list]
+        assert ["docker", "network", "rm", "oznet--r1--net1"] in calls
+        assert ["docker", "network", "rm", "oznet--r1--net2"] in calls
+
+        # Verify registry release
+        mock_registry.release_network.assert_called_once_with("10.0.0.0/24")

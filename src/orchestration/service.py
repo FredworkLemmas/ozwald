@@ -57,6 +57,10 @@ class BaseProvisionableService(Service):
     def init_service(cls):
         """Initialize the service class (abstract in base)."""
 
+    @classmethod
+    def deinit_service(cls):
+        """Deinitialize the service class (abstract in base)."""
+
     # Lifecycle to be implemented by subclasses (e.g., ContainerService)
 
     def start(self):
