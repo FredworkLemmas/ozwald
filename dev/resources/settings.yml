@@ -40,6 +40,9 @@ provisioners:
 
 realms:
   default:
+    vault:
+      lockers:
+        app-secrets: {}
     networks:
       - name: default
         type: bridge
@@ -49,6 +52,8 @@ realms:
         type: container
         description: Simple test service
         image: 'simple_test_1'
+        lockers:
+          - app-secrets
         bridge-connector:
           port: 80
           name: main-api-port

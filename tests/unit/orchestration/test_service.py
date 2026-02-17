@@ -81,16 +81,23 @@ class FakeContainerServiceOrch(ContainerService):
             networks=["default"],
         )
 
-    def get_container_start_command(self, image: str) -> list[str]:
+    def get_container_start_command(
+        self,
+        image: str,
+        secrets_file: str | None = None,
+    ) -> list[str]:
         # Minimal command that avoids accessing base class attributes
-        return [
+        cmd = [
             "docker",
             "run",
             "-d",
             "--name",
             f"service-{self._service_info.name}",
-            image,
         ]
+        if secrets_file:
+            cmd.extend(["--env-file", secrets_file])
+        cmd.append(image)
+        return cmd
 
 
 @pytest.fixture(autouse=True)

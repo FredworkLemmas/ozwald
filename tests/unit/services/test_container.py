@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 from typing import List
@@ -77,15 +78,22 @@ class FakeContainerService(ContainerService):
             networks=["default"],
         )
 
-    def get_container_start_command(self, image: str) -> list[str]:
-        return [
+    def get_container_start_command(
+        self,
+        image: str,
+        secrets_file: str | None = None,
+    ) -> list[str]:
+        cmd = [
             "docker",
             "run",
             "-d",
             "--name",
             self.get_container_name(),
-            image,
         ]
+        if secrets_file:
+            cmd.extend(["--env-file", secrets_file])
+        cmd.append(image)
+        return cmd
 
 
 class TestContainerServiceHealth:
@@ -578,3 +586,71 @@ class TestContainerServiceLifecycle:
 
         # Verify registry release
         mock_registry.release_network.assert_called_once_with("10.0.0.0/24")
+
+
+# ============================================================================
+# Secrets Management Tests
+# ============================================================================
+
+
+class TestContainerSecrets:
+    @pytest.fixture
+    def service_info(self):
+        return ServiceInformation(
+            name="n1",
+            service="s1",
+            realm="test-realm",
+            secrets_tokens={"locker1": "token1"},
+        )
+
+    @pytest.fixture
+    def container_service(self, service_info, mocker, monkeypatch):
+        # ContainerService requires OZWALD_HOST
+        monkeypatch.setenv("OZWALD_HOST", "test-host")
+
+        # Mock SystemProvisioner.singleton to avoid loading config
+        mocker.patch("orchestration.provisioner.SystemProvisioner.singleton")
+
+        # Mock effective_definition to return a mock with lockers
+        mock_def = mocker.Mock()
+        mock_def.lockers = ["locker1"]
+        mocker.patch(
+            "services.container.ContainerService.effective_definition",
+            new_callable=mocker.PropertyMock,
+            return_value=mock_def,
+        )
+        return ContainerService(service_info)
+
+    def test_prepare_secrets_env_file(self, container_service, mocker):
+        mock_provisioner = mocker.patch(
+            "orchestration.provisioner.SystemProvisioner.singleton",
+        ).return_value
+        mock_provisioner.get_secret.return_value = "encrypted-blob"
+
+        mock_decrypt = mocker.patch(
+            "util.crypto.decrypt_payload",
+            return_value={"SECRET_VAR": "secret-value"},
+        )
+
+        path = container_service._prepare_secrets_env_file()
+        assert path is not None
+        assert os.path.exists(path)
+
+        try:
+            with open(path) as f:
+                content = f.read()
+                assert content == "SECRET_VAR=secret-value\n"
+
+            mock_provisioner.get_secret.assert_called_once_with(
+                "test-realm",
+                "locker1",
+            )
+            mock_decrypt.assert_called_once_with("encrypted-blob", "token1")
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_prepare_secrets_env_file_no_token(self, container_service, mocker):
+        container_service._service_info.secrets_tokens = {}
+        path = container_service._prepare_secrets_env_file()
+        assert path is None

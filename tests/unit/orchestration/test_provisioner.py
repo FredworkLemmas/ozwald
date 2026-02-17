@@ -80,6 +80,12 @@ def provisioner_env(monkeypatch, tmp_path):
         FakeActiveServicesCache,
     )
 
+    # Mock ClassCRegistry to avoid calling SystemProvisioner.singleton()
+    monkeypatch.setattr(
+        "util.class_c_registry.ClassCRegistry.singleton",
+        lambda: None,
+    )
+
     # Install a tiny sleep at the end of loop that aborts the daemon after
     # one pass
     def sleep_patch(seconds: float):
@@ -140,6 +146,7 @@ def provisioner_env(monkeypatch, tmp_path):
     # Mock out service initialization to avoid
     # side effects (Docker, Redis singleton calls)
     monkeypatch.setattr(prov, "_init_services", lambda: None)
+    monkeypatch.setattr(prov, "_init_networks", lambda: None)
     monkeypatch.setattr(prov, "_deinit_services", lambda: None)
     monkeypatch.setattr(prov, "_init_persistent_services", lambda: None)
     monkeypatch.setattr(prov, "_shutdown_persistent_services", lambda: None)

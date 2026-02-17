@@ -16,6 +16,7 @@ from orchestration.service import BaseProvisionableService
 from util.active_services_cache import ActiveServicesCache, WriteCollision
 from util.footprint_request_cache import FootprintRequestCache
 from util.logger import get_logger
+from util.secrets_store import SecretsStore
 
 from .models import (
     Cache,
@@ -56,6 +57,7 @@ class SystemProvisioner:
         self._footprint_request_cache = (
             FootprintRequestCache(cache) if cache else None
         )
+        self._secrets_store = SecretsStore(cache) if cache else None
         self._provisioned_networks: List[NetworkInstance] = []
 
     def get_cache(self) -> Cache:
@@ -109,6 +111,17 @@ class SystemProvisioner:
             except Exception as e:
                 logger.error("Failed to prepare NFS mounts: %s", e)
         return _system_provisioner
+
+    def set_secret(self, realm: str, locker: str, encrypted_blob: str) -> None:
+        """Store an encrypted secret in the secrets store."""
+        if self._secrets_store:
+            self._secrets_store.set_secret(realm, locker, encrypted_blob)
+
+    def get_secret(self, realm: str, locker: str) -> str | None:
+        """Retrieve an encrypted secret from the secrets store."""
+        if self._secrets_store:
+            return self._secrets_store.get_secret(realm, locker)
+        return None
 
     def get_configured_services(self) -> List[ServiceDefinition]:
         """Get all service_definitions configured for this provisioner"""
@@ -204,6 +217,15 @@ class SystemProvisioner:
                 # Update existing service if needed
                 if existing.status == ServiceStatus.STOPPING:
                     existing.status = ServiceStatus.STARTING
+
+                # Update desired state fields
+                existing.profile = service_info.profile
+                existing.variety = service_info.variety
+                existing.secrets_tokens = service_info.secrets_tokens
+                # Properties are usually derived from definition, but if they
+                # were provided in service_info, we should update them.
+                if service_info.properties:
+                    existing.properties.update(service_info.properties)
             else:
                 new_service = self._init_service(service_info)
                 if new_service:
@@ -367,6 +389,16 @@ class SystemProvisioner:
         for svc_cls in BaseProvisionableService.get_service_classes():
             logger.info("Initializing service class: %s", svc_cls.__name__)
             svc_cls.init_service()
+
+    def _init_networks(self) -> None:
+        """Call _init_networks class method for each service class."""
+        for svc_cls in BaseProvisionableService.get_service_classes():
+            if hasattr(svc_cls, "_init_networks"):
+                logger.info(
+                    "Initializing networks for service class: %s",
+                    svc_cls.__name__,
+                )
+                svc_cls._init_networks()
 
     def _get_service_class_from_service_info(
         self, svc_info: ServiceInformation

@@ -535,9 +535,24 @@ def action_footprint_services(
 
 
 def action_update_dynamic_services(
-    port: int, clear: bool, spec: str | None
+    port: int,
+    clear: bool,
+    spec: str | None,
+    tokens: list[str] | None = None,
 ) -> int:
     try:
+        token_map = {}
+        if tokens:
+            for t in tokens:
+                if "=" in t:
+                    k, v = t.split("=", 1)
+                    token_map[k] = v
+                else:
+                    print(
+                        f"Warning: Invalid token format '{t}', "
+                        "expected 'locker=token'",
+                    )
+
         if clear:
             body: list[dict[str, Any]] = []
         else:
@@ -548,6 +563,10 @@ def action_update_dynamic_services(
                 )
                 return 2
             body = _parse_services_spec(spec)
+
+        if token_map:
+            for service_info in body:
+                service_info["secrets_tokens"] = token_map
 
         print(f"body: {json.dumps(body, indent=2)}")
 
@@ -666,6 +685,46 @@ def action_get_footprint_logs(
         return 2
 
 
+def action_set_secrets(
+    port: int,
+    realm: str,
+    locker: str,
+    token: str,
+    file_path: str,
+) -> int:
+    try:
+        if not os.path.exists(file_path):
+            print(f"Error: Secrets file '{file_path}' not found")
+            return 2
+
+        with open(file_path) as f:
+            payload = json.load(f)
+
+        body = {
+            "realm": realm,
+            "locker_name": locker,
+            "token": token,
+            "payload": payload,
+        }
+
+        data = ucli.update_secrets(port=port, body=body)
+
+        if data.get("status") == "accepted":
+            print(
+                f"\n✓ Secrets for locker '{locker}' "
+                f"in realm '{realm}' updated\n"
+            )
+            return 0
+        print(f"Unexpected response: {json.dumps(data)}")
+        return 2
+    except json.JSONDecodeError:
+        print(f"Error: Secrets file '{file_path}' must be a valid JSON")
+        return 2
+    except Exception as e:
+        print(f"Error setting secrets: {type(e).__name__}({e})")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ozwald",
@@ -686,6 +745,7 @@ def build_parser() -> argparse.ArgumentParser:
             "get_service_launch_logs",
             "get_service_logs",
             "status",
+            "secrets",
         ],
     )
 
@@ -768,6 +828,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Realm for service lookup/logs (default: default)",
     )
     parser.add_argument(
+        "--token",
+        action="append",
+        help="For update_dynamic_services: token(s) for lockers (locker=token)",
+    )
+    parser.add_argument(
+        "--file",
+        help="For secrets set: path to the JSON file containing secrets",
+    )
+    parser.add_argument(
         "services_spec",
         nargs="?",
         help=(
@@ -776,6 +845,11 @@ def build_parser() -> argparse.ArgumentParser:
             "or service[profile][variety] (or just service name for "
             "get_footprint_logs)"
         ),
+    )
+    parser.add_argument(
+        "extra_args",
+        nargs="*",
+        help="Extra arguments for specific actions (e.g. secrets set)",
     )
     return parser
 
@@ -798,6 +872,7 @@ def main(argv: list[str] | None = None) -> int:
         "get_footprint_logs",
         "get_service_launch_logs",
         "get_service_logs",
+        "secrets",
     }
     if (
         args.action in api_actions
@@ -826,7 +901,28 @@ def main(argv: list[str] | None = None) -> int:
             port_for_api,
             args.clear,
             args.services_spec,
+            args.token,
         )
+    if args.action == "secrets":
+        if args.services_spec == "set":
+            if len(args.extra_args) < 2:
+                print("Error: 'secrets set' requires <realm> and <locker>")
+                return 2
+            realm = args.extra_args[0]
+            locker = args.extra_args[1]
+            token = args.token[0] if args.token else None
+            if not token:
+                print("Error: --token is required for 'secrets set'")
+                return 2
+            if not args.file:
+                print("Error: --file is required for 'secrets set'")
+                return 2
+            return action_set_secrets(
+                port_for_api, realm, locker, token, args.file
+            )
+        else:
+            print(f"Error: Unknown secrets subcommand '{args.services_spec}'")
+            return 2
     if args.action == "footprint_services":
         return action_footprint_services(
             port_for_api,

@@ -21,6 +21,7 @@ from orchestration.models import (
     FootprintAction,
     FootprintLogLines,
     Resource,
+    SecretsUpdate,
     ServiceDefinition,
     ServiceInformation,
 )
@@ -185,6 +186,33 @@ async def update_active_services(
         )
 
     return {"status": "accepted", "message": "Service update request accepted"}
+
+
+@app.post(
+    "/srv/secrets/update/",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Update secrets",
+    description="Update encrypted secrets in the store",
+)
+async def update_secrets(
+    update: SecretsUpdate,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    """Update secrets for a realm and locker."""
+    from util.crypto import encrypt_payload
+
+    provisioner = SystemProvisioner.singleton()
+    try:
+        encrypted_blob = encrypt_payload(update.payload, update.token)
+        provisioner.set_secret(update.realm, update.locker_name, encrypted_blob)
+    except Exception as e:
+        logger.error(f"Failed to update secrets: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update secrets: {e}",
+        ) from e
+
+    return {"status": "accepted", "message": "Secrets updated"}
 
 
 @app.get(
