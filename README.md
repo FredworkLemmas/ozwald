@@ -33,7 +33,10 @@ Key Ideas
 - **Varieties and Profiles:** A clear model for describing services across
   different hardware (nvidia, amdgpu, cpu-only) and parameter sets that specify
   model type, context window size, etc.
-- ** CLI and API:** A simple CLI tool for iterating on service configurations
+- **Secrets Management:** Securely store and inject encrypted environment
+  variables into services using decryption tokens and the Docker `env-file`
+  mechanism.
+- **CLI and API:** A simple CLI tool for iterating on service configurations
   and an API for changing the set of provisioned services.
 
 
@@ -182,10 +185,57 @@ Configuration reference
 - `hosts[]`: Named machines and their IPs.
 - `provisioners[]`: Defines where the provisioner runs and its state cache
   (Redis).
-- `realms`: Groups for `networks` and `service-definitions`.
+- `realms`: Groups for `networks`, `service-definitions`, and `vault`.
 - `service-definitions[]`: Descriptions of services, including hardware
-  `varieties`, runtime `profiles`, and `bridge-connector` settings.
+  `varieties`, runtime `profiles`, `lockers` requirements, and `bridge-connector` settings.
 - `portals[]`: Mapping host ports to bridge connectors in specific realms.
+
+Secrets Management
+------------------
+
+Ozwald provides a secure way to manage environment variables (secrets) using
+Redis-backed storage and user-provided decryption tokens.
+
+1) **Define Vault and Lockers in Config**
+
+Add a `vault` section to your realm and specify which `lockers` a service requires:
+
+```yaml
+realms:
+  default:
+    vault:
+      lockers:
+        api-keys: {}
+    service-definitions:
+      - name: my-service
+        lockers:
+          - api-keys
+```
+
+2) **Store Secrets via CLI**
+
+Use the `ozwald secrets set` command to encrypt and store secrets in Redis:
+
+```bash
+# Create a JSON file with your secrets
+echo '{"OPENAI_API_KEY": "sk-..."}' > secrets.json
+
+# Store it in the 'api-keys' locker using a token
+ozwald secrets set default api-keys --token my-secret-token --file secrets.json
+```
+
+3) **Inject Secrets at Runtime**
+
+When updating active services, provide the decryption tokens for the required
+lockers:
+
+```bash
+ozwald update_dynamic_services --token api-keys=my-secret-token "my-service[default][nvidia]"
+```
+
+Secrets are decrypted at runtime, written to a temporary `env-file` on the host,
+and injected into the container. The temporary file is deleted immediately after
+the container starts.
 
 CLI usage
 ---------

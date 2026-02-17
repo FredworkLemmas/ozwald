@@ -10,6 +10,7 @@ from orchestration.models import (
     EffectiveServiceDefinition,
     FootprintConfig,
     Host,
+    Locker,
     Network,
     PersistentServiceDeclaration,
     Portal,
@@ -20,6 +21,7 @@ from orchestration.models import (
     ServiceDefinition,
     ServiceDefinitionProfile,
     ServiceDefinitionVariety,
+    Vault,
 )
 from util.logger import get_logger
 
@@ -220,11 +222,20 @@ class ConfigReader:
                 realm_name,
             )
 
+            # Parse vault
+            vault_data = realm_data.get("vault")
+            vault = None
+            if vault_data:
+                lockers_data = vault_data.get("lockers", {})
+                lockers = [Locker(name=name) for name in lockers_data]
+                vault = Vault(lockers=lockers)
+
             self.realms[realm_name] = Realm(
                 name=realm_name,
                 networks=networks,
                 service_definitions=services,
                 persistent_services=persistent_services,
+                vault=vault,
             )
 
     def _parse_networks(self, networks_data: list, realm: str) -> list[Network]:
@@ -280,6 +291,7 @@ class ConfigReader:
             parent_env_file = service_data.get("env_file", []) or []
             parent_image = service_data.get("image", "") or ""
             parent_networks = service_data.get("networks", []) or ["default"]
+            parent_lockers = service_data.get("lockers", []) or []
             parent_footprint_data = service_data.get("footprint")
             parent_footprint = (
                 FootprintConfig(**parent_footprint_data)
@@ -315,6 +327,7 @@ class ConfigReader:
                 depends_on = profile_data.get("depends_on", []) or []
                 env_file = profile_data.get("env_file", []) or []
                 networks = profile_data.get("networks")
+                lockers = profile_data.get("lockers", []) or []
 
                 # Normalize profile-specific volumes (no implicit inherit);
                 # merging happens at runtime by target precedence.
@@ -354,6 +367,7 @@ class ConfigReader:
                     networks=networks,
                     bridge_connector=profile_bridge_connector,
                     footprint=profile_footprint,
+                    lockers=lockers,
                 )
                 profiles.append(profile)
 
@@ -390,6 +404,7 @@ class ConfigReader:
                     networks=variety_data.get("networks"),
                     bridge_connector=v_bridge_connector,
                     footprint=v_footprint,
+                    lockers=variety_data.get("lockers"),
                 )
                 varieties[variety_name] = v
                 if default_image_from_variety is None and v.image:
@@ -423,6 +438,7 @@ class ConfigReader:
                 networks=parent_networks,
                 bridge_connector=parent_bridge_connector,
                 footprint=parent_footprint,
+                lockers=parent_lockers,
                 profiles=profiles_dict,
                 varieties=varieties,
             )
@@ -739,6 +755,14 @@ class ConfigReader:
             p.footprint if p else None,
         )
 
+        merged_lockers = list(
+            set(
+                (sd.lockers or [])
+                + (v.lockers or [] if v else [])
+                + (p.lockers or [] if p else [])
+            )
+        )
+
         def choose(*vals):
             for val in vals:
                 if isinstance(val, str):
@@ -770,6 +794,7 @@ class ConfigReader:
                 base_bridge_connector,
             ),
             footprint=merged_footprint,
+            lockers=merged_lockers,
         )
 
     @property

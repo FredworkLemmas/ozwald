@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import pytest
 import yaml
 
@@ -1040,3 +1043,61 @@ class TestNetworkIterator:
         assert len(networks) == 3
         names = {n.name for n in networks}
         assert names == {"net1", "net2", "net3"}
+
+
+# ============================================================================
+# Vault and Locker Parsing Tests
+# ============================================================================
+
+
+class TestVaultConfig:
+    @pytest.fixture
+    def config_file(self):
+        content = {
+            "realms": {
+                "test-realm": {
+                    "vault": {
+                        "lockers": {
+                            "locker1": {},
+                            "locker2": {},
+                        }
+                    },
+                    "service-definitions": [
+                        {
+                            "name": "svc1",
+                            "type": "container",
+                            "lockers": ["locker1"],
+                        }
+                    ],
+                }
+            },
+            "provisioners": [
+                {
+                    "name": "p1",
+                    "host": "h1",
+                    "cache": {"type": "redis"},
+                }
+            ],
+            "hosts": [{"name": "h1", "ip": "127.0.0.1"}],
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yml", delete=False
+        ) as f:
+            yaml.dump(content, f)
+            path = f.name
+        yield path
+        if os.path.exists(path):
+            os.remove(path)
+
+    def test_parse_vault(self, config_file):
+        reader = ConfigReader(config_file)
+        realm = reader.realms["test-realm"]
+        assert realm.vault is not None
+        assert len(realm.vault.lockers) == 2
+        locker_names = {locker.name for locker in realm.vault.lockers}
+        assert locker_names == {"locker1", "locker2"}
+
+    def test_parse_service_lockers(self, config_file):
+        reader = ConfigReader(config_file)
+        sd = reader.get_service_by_name("svc1", "test-realm")
+        assert sd.lockers == ["locker1"]

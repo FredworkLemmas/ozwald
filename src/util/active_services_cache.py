@@ -110,6 +110,7 @@ class ActiveServicesCache:
 
         service_info_list = []
         for service_dict in services_data:
-            service_dict["info"] = service_dict["info"] or {}
+            # Ensure info is a dict even if missing or None in old data
+            service_dict["info"] = service_dict.get("info") or {}
             service_info_list.append(ServiceInformation(**service_dict))
         return service_info_list

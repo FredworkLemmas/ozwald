@@ -106,6 +106,23 @@ def update_dynamic_services(
     return data
 
 
+def update_secrets(
+    *,
+    port: int = 8000,
+    body: dict[str, Any],
+    system_key: str | None = None,
+) -> dict[str, Any]:
+    """Call the provisioner update secrets endpoint."""
+    url = f"http://localhost:{port}/srv/secrets/update/"
+    headers = _auth_headers(system_key)
+    resp = http_post(url, headers=headers, json=body)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected response format for update_secrets")
+    return data
+
+
 def footprint_services(
     *,
     port: int = 8000,

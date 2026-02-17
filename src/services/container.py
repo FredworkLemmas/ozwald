@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 import threading
 import time
 from typing import Any, ClassVar
@@ -261,23 +263,29 @@ class ContainerService(BaseProvisionableService):
             )
 
         # compute the container start command
-        cmd = self.get_container_start_command(image)
+        secrets_file = None
+        try:
+            secrets_file = self._prepare_secrets_env_file()
+            cmd = self.get_container_start_command(image, secrets_file)
 
-        logger.info(
-            "Starting container for service "
-            f"{self._service_info.name} with command: "
-            f'"{" ".join(cmd)}"',
-        )
+            logger.info(
+                "Starting container for service "
+                f"{self._service_info.name} with command: "
+                f'"{" ".join(cmd)}"',
+            )
 
-        # start the container in foreground using Popen
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-        )
+            # start the container in foreground using Popen
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                bufsize=1,
+            )
+        finally:
+            if secrets_file and os.path.exists(secrets_file):
+                os.remove(secrets_file)
 
         # Real-time Log Streaming to Redis
         def log_reader():
@@ -595,8 +603,79 @@ class ContainerService(BaseProvisionableService):
         # Fallback to namespaced oznet name if not explicitly in config
         return f"oznet--{self._service_info.realm}--{network_name}"
 
-    def get_container_start_command(self, image: str) -> list[str]:
+    def _prepare_secrets_env_file(self) -> str | None:
+        """Fetch, decrypt and write secrets to a temporary env-file.
+
+        Returns:
+            The path to the temporary env-file, or None if no secrets.
+        """
+        lockers = self.effective_definition.lockers
+        tokens = self._service_info.secrets_tokens
+
+        if not lockers:
+            return None
+
+        provisioner = SystemProvisioner.singleton()
+        all_secrets = {}
+
+        from util.crypto import decrypt_payload
+
+        for locker_name in lockers:
+            token = tokens.get(locker_name)
+            if not token:
+                logger.warning(
+                    f"No token provided for locker '{locker_name}' "
+                    f"required by service '{self._service_info.name}'"
+                )
+                continue
+
+            encrypted_blob = provisioner.get_secret(
+                self._service_info.realm,
+                locker_name,
+            )
+            if not encrypted_blob:
+                logger.warning(
+                    f"Secret not found for locker '{locker_name}' "
+                    f"in realm '{self._service_info.realm}'"
+                )
+                continue
+
+            try:
+                decrypted = decrypt_payload(encrypted_blob, token)
+                all_secrets.update(decrypted)
+            except Exception as e:
+                logger.error(
+                    f"Failed to decrypt secrets for locker '{locker_name}': {e}"
+                )
+
+        if not all_secrets:
+            return None
+
+        # Write to temporary file
+        fd, path = tempfile.mkstemp(
+            prefix="ozwald-secrets-",
+            suffix=".env",
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                for key, value in all_secrets.items():
+                    f.write(f"{key}={value}\n")
+            return path
+        except Exception as e:
+            # Cleanup on failure
+            if os.path.exists(path):
+                os.remove(path)
+            logger.error(f"Failed to write temporary secrets file: {e}")
+            return None
+
+    def get_container_start_command(
+        self,
+        image: str,
+        secrets_file: str | None = None,
+    ) -> list[str]:
         docker_cmd = ["docker", "run"]
+        if secrets_file:
+            docker_cmd.extend(["--env-file", secrets_file])
         std_opts = self.get_container_options__standard()
         gpu_opts = self.get_container_options__gpu()
         port_opts = self.get_container_options__port()

@@ -136,6 +136,7 @@ class ServiceDefinitionProfile(BaseModel):
     )
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
+    lockers: list[str] = Field(default_factory=list)
 
 
 class ServiceDefinitionVariety(BaseModel):
@@ -156,6 +157,7 @@ class ServiceDefinitionVariety(BaseModel):
     )
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
+    lockers: list[str] | None = Field(default_factory=list)
 
 
 class ServiceDefinition(BaseModel):
@@ -185,6 +187,7 @@ class ServiceDefinition(BaseModel):
     )
     properties: dict[str, Any] | None = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
+    lockers: list[str] | None = Field(default_factory=list)
     profiles: dict[str, ServiceDefinitionProfile] | None = Field(
         default_factory=dict,
     )
@@ -217,6 +220,7 @@ class EffectiveServiceDefinition(BaseModel):
     )
     properties: dict[str, Any] = Field(default_factory=dict)
     footprint: FootprintConfig | None = None
+    lockers: list[str] = Field(default_factory=list)
 
 
 # ============================================================================
@@ -265,7 +269,15 @@ class ServiceInformation(BaseModel):
     profile: str | None = None
     status: ServiceStatus | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
-    info: dict[str, Any] | None = {}  # None on request, dict on response
+    info: dict[str, Any] | None = Field(default_factory=dict)
+    secrets_tokens: dict[str, str] = Field(default_factory=dict)
+
+
+class SecretsUpdate(BaseModel):
+    realm: str
+    locker_name: str
+    token: str
+    payload: dict[str, str]
 
 
 class PersistentServiceDeclaration(BaseModel):
@@ -279,6 +291,15 @@ class PersistentServiceDeclaration(BaseModel):
 # ============================================================================
 # Realm Models
 # ============================================================================
+class Locker(BaseModel):
+    name: str
+    secrets: dict[str, str] | None = None
+
+
+class Vault(BaseModel):
+    lockers: list[Locker] = Field(default_factory=list)
+
+
 class Realm(BaseModel):
     name: str
     service_definitions: list[ServiceDefinition] | None = Field(
@@ -288,6 +309,7 @@ class Realm(BaseModel):
         default_factory=list
     )
     networks: list[Network] | None = Field(default_factory=list)
+    vault: Vault | None = None
 
 
 # ============================================================================
