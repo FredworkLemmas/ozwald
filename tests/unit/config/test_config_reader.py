@@ -1101,3 +1101,48 @@ class TestVaultConfig:
         reader = ConfigReader(config_file)
         sd = reader.get_service_by_name("svc1", "test-realm")
         assert sd.lockers == ["locker1"]
+
+
+class TestRealmVolumesParsing:
+    def test_realm_volumes_are_parsed(self, tmp_path):
+        cfg = {
+            "realms": {
+                "test-realm": {
+                    "volumes": [
+                        {
+                            "name": "vol1",
+                            "type": "tmp-writeable",
+                            "source": "src1",
+                        },
+                        {
+                            "name": "vol2",
+                            "type": "versioned-read-only",
+                            "source": "src2",
+                        },
+                    ],
+                    "service-definitions": [
+                        {
+                            "name": "svc1",
+                            "type": "container",
+                            "volumes": ["vol1:/data", "vol2:/data2:ro"],
+                        }
+                    ],
+                }
+            },
+            "hosts": [],
+            "provisioners": [],
+        }
+        cfg_path = tmp_path / "test_realm_vols.yml"
+        cfg_path.write_text(yaml.safe_dump(cfg))
+        reader = ConfigReader(str(cfg_path))
+
+        realm = reader.realms["test-realm"]
+        assert len(realm.volumes) == 2
+        assert realm.volumes[0].name == "vol1"
+        assert realm.volumes[0].type == "tmp-writeable"
+        assert realm.volumes[1].name == "vol2"
+        assert realm.volumes[1].type == "versioned-read-only"
+
+        svc = reader.get_service_by_name("svc1", "test-realm")
+        assert "vol1:/data:rw" in svc.volumes
+        assert "vol2:/data2:ro" in svc.volumes

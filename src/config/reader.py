@@ -22,6 +22,8 @@ from orchestration.models import (
     ServiceDefinitionProfile,
     ServiceDefinitionVariety,
     Vault,
+    VolumeDefinition,
+    VolumeType,
 )
 from util.logger import get_logger
 
@@ -213,9 +215,14 @@ class ConfigReader:
                 realm_data.get("networks", []),
                 realm_name,
             )
+            volumes = self._parse_realm_volumes(
+                realm_data.get("volumes", []),
+                realm_name,
+            )
             services = self._parse_service_definitions(
                 realm_data.get("service-definitions", []),
                 realm_name,
+                realm_volumes=volumes,
             )
             persistent_services = self._parse_persistent_services(
                 realm_data.get("persistent-services", []),
@@ -233,6 +240,7 @@ class ConfigReader:
             self.realms[realm_name] = Realm(
                 name=realm_name,
                 networks=networks,
+                volumes=volumes,
                 service_definitions=services,
                 persistent_services=persistent_services,
                 vault=vault,
@@ -256,10 +264,43 @@ class ConfigReader:
             parsed_networks.append(network)
         return parsed_networks
 
+    def _parse_realm_volumes(
+        self, volumes_data: list, realm: str
+    ) -> list[VolumeDefinition]:
+        """
+        Parse realm-level volumes section and create VolumeDefinition models.
+        """
+        parsed_volumes = []
+        for i, vol_data in enumerate(volumes_data):
+            if "name" not in vol_data:
+                raise KeyError(
+                    f"Volume entry at index {i} in realm '{realm}' "
+                    "is missing 'name'"
+                )
+            if "type" not in vol_data:
+                raise KeyError(
+                    f"Volume entry at index {i} in realm '{realm}' "
+                    "is missing 'type'"
+                )
+            if "source" not in vol_data:
+                raise KeyError(
+                    f"Volume entry at index {i} in realm '{realm}' "
+                    "is missing 'source'"
+                )
+
+            volume = VolumeDefinition(
+                name=vol_data["name"],
+                type=VolumeType(vol_data["type"]),
+                source=vol_data["source"],
+            )
+            parsed_volumes.append(volume)
+        return parsed_volumes
+
     def _parse_service_definitions(
         self,
         services_data: list,
         realm: str,
+        realm_volumes: list[VolumeDefinition] | None = None,
     ) -> list[ServiceDefinition]:
         """
         Parse service-definitions section and create ServiceDefinition models.
@@ -333,6 +374,8 @@ class ConfigReader:
                 # merging happens at runtime by target precedence.
                 prof_vols = self._normalize_service_volumes(
                     profile_data.get("volumes", []),
+                    realm_name=realm,
+                    realm_volumes=realm_volumes,
                 )
 
                 # footprint
@@ -379,6 +422,8 @@ class ConfigReader:
             for variety_name, variety_data in varieties_data.items():
                 v_vols = self._normalize_service_volumes(
                     variety_data.get("volumes", []),
+                    realm_name=realm,
+                    realm_volumes=realm_volumes,
                 )
                 v_footprint_data = variety_data.get("footprint")
                 v_footprint = (
@@ -420,6 +465,8 @@ class ConfigReader:
             # Normalize and attach volumes for service (may use top-level)
             svc_vols = self._normalize_service_volumes(
                 service_data.get("volumes", []),
+                realm_name=realm,
+                realm_volumes=realm_volumes,
             )
 
             service_def = ServiceDefinition(
@@ -478,7 +525,12 @@ class ConfigReader:
             parsed_persistent_services.append(ps_decl)
         return parsed_persistent_services
 
-    def _normalize_service_volumes(self, raw_vols) -> List[str]:
+    def _normalize_service_volumes(
+        self,
+        raw_vols,
+        realm_name: str = None,
+        realm_volumes: list[VolumeDefinition] | None = None,
+    ) -> List[str]:
         """Return a list of docker-ready volume strings.
 
         Supports:
@@ -489,6 +541,15 @@ class ConfigReader:
         vols: List[str] = []
         if not raw_vols:
             return vols
+
+        rv_dict = {}
+        if realm_volumes:
+            rv_dict = {v.name: v for v in realm_volumes}
+        elif realm_name and realm_name in self.realms:
+            realm = self.realms[realm_name]
+            if realm.volumes:
+                rv_dict = {v.name: v for v in realm.volumes}
+
         for entry in raw_vols:
             if isinstance(entry, dict):
                 name = entry.get("name")
@@ -502,6 +563,12 @@ class ConfigReader:
                     raise ValueError(
                         f"Volume target must be absolute: {target}",
                     )
+
+                if name in rv_dict:
+                    mode = ":ro" if ro else ":rw"
+                    vols.append(f"{name}:{target}{mode}")
+                    continue
+
                 spec = self.volumes.get(name)
                 if not spec:
                     raise ValueError(f"Unknown volume name referenced: {name}")
@@ -545,6 +612,11 @@ class ConfigReader:
                         raise ValueError(
                             f"Volume target must be absolute: {target}",
                         )
+
+                    if name in rv_dict:
+                        vols.append(f"{name}:{target}{mode or ':rw'}")
+                        continue
+
                     if name not in self.volumes:
                         raise ValueError(
                             f"Unknown volume name referenced: {name}",

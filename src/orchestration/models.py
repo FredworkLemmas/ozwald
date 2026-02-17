@@ -37,6 +37,17 @@ class NetworkInstance(BaseModel):
     ip_range: str | None = None
 
 
+class VolumeType(str, Enum):
+    TMP_WRITEABLE = "tmp-writeable"
+    VERSIONED_READ_ONLY = "versioned-read-only"
+
+
+class VolumeDefinition(BaseModel):
+    name: str
+    type: VolumeType
+    source: str
+
+
 class PortalBridgeConnection(BaseModel):
     realm: str
     connector: str
@@ -309,6 +320,7 @@ class Realm(BaseModel):
         default_factory=list
     )
     networks: list[Network] | None = Field(default_factory=list)
+    volumes: list[VolumeDefinition] | None = Field(default_factory=list)
     vault: Vault | None = None
 
 
@@ -327,6 +339,7 @@ class Provisioner(BaseModel):
     name: str
     host: str  # Reference to Host name
     cache: Cache | None = None
+    encrypted_storage_dir: str | None = None
 
 
 # class ProvisionerState(BaseModel):
