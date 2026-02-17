@@ -707,6 +707,14 @@ class ContainerService(BaseProvisionableService):
     def get_container_volumes(self) -> list[str] | None:
         if self.container_volumes is not None:
             return self.container_volumes
+
+        # Prefer resolved volumes if provided by the provisioner
+        if (
+            self._service_info.info
+            and "resolved_volumes" in self._service_info.info
+        ):
+            return self._service_info.info["resolved_volumes"]
+
         # Resolve volumes with profile/variety-aware merge
         try:
             return self.effective_definition.volumes

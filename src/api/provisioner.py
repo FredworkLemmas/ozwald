@@ -258,6 +258,36 @@ async def health_check() -> dict:
     return {"status": "healthy"}
 
 
+@app.post(
+    "/srv/storage/persist",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Persist a temporary volume",
+    description=(
+        "Create a new versioned encrypted volume from a tmp-writeable volume"
+    ),
+)
+async def persist_volume(
+    realm: str,
+    volume_name: str,
+    destination_source: str,
+    encryption_key: str,
+    authenticated: bool = Depends(verify_system_key),
+) -> dict:
+    provisioner = SystemProvisioner.singleton()
+    result = provisioner.persist_volume(
+        realm=realm,
+        volume_name=volume_name,
+        destination_source=destination_source,
+        encryption_key=encryption_key,
+    )
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to persist volume",
+        )
+    return {"status": "accepted", "image_path": result}
+
+
 # ---------------------------------------------------------------------------
 # Footprinting API
 # ---------------------------------------------------------------------------

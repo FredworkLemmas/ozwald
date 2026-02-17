@@ -111,8 +111,13 @@ def provisioner_env(monkeypatch, tmp_path):
             self.persistent_services = []
             self.provisioners = []
             self.defined_networks = []
+            self.realms = {}
 
         def get_service_by_name(self, name: str, realm: str):
+            from orchestration.models import Realm
+
+            if realm not in self.realms:
+                self.realms[realm] = Realm(name=realm)
             return StubServiceDef(self._type_value)
 
         def get_effective_service_definition(

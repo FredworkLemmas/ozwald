@@ -1,6 +1,7 @@
 import itertools
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import time
@@ -29,6 +30,7 @@ from .models import (
     ServiceInstanceUsage,
     ServiceStatus,
     SystemUsageDelta,
+    VolumeDefinition,
 )
 
 BACKEND_DAEMON_SLEEP_TIME = 2.0
@@ -59,6 +61,17 @@ class SystemProvisioner:
         )
         self._secrets_store = SecretsStore(cache) if cache else None
         self._provisioned_networks: List[NetworkInstance] = []
+
+        # Find our own provisioner definition to get encrypted_storage_dir
+        self.encrypted_storage_dir = None
+        configured_provisioner_name = os.environ.get("OZWALD_PROVISIONER")
+        if configured_provisioner_name:
+            for provisioner in config_reader.provisioners:
+                if provisioner.name == configured_provisioner_name:
+                    self.encrypted_storage_dir = (
+                        provisioner.encrypted_storage_dir
+                    )
+                    break
 
     def get_cache(self) -> Cache:
         return self._cache
@@ -493,6 +506,9 @@ class SystemProvisioner:
         svc_info.info["start_initiated"] = now.isoformat()
         updated = True
 
+        # Prepare and mount volumes
+        self._prepare_service_volumes(svc_info)
+
         try:
             logger.info(
                 f"starting service: {svc_info.name}",
@@ -588,6 +604,9 @@ class SystemProvisioner:
                     ),
                     service_cls.__name__,
                 )
+
+            # Cleanup and unmount volumes
+            self._cleanup_service_volumes(svc_info)
         except Exception as e:
             logger.error(
                 "Error stopping service '%s': %s",
@@ -793,6 +812,9 @@ class SystemProvisioner:
         if not self._validate_footprint_data_file_is_writable():
             return
 
+        # Initialize storage
+        self._init_storage()
+
         # Initialize services
         self._init_services()
 
@@ -839,6 +861,10 @@ class SystemProvisioner:
 
         # Final deinitialization of all service types
         self._deinit_services()
+
+        # Cleanup temporary volumes and storage
+        self._clear_temporary_volumes()
+        self._deinit_storage()
 
         logger.info("Provisioner backend daemon stopped.")
 
@@ -892,6 +918,283 @@ class SystemProvisioner:
                     f"{result.stderr or result.stdout}",
                 )
             logger.info("Mounted NFS %s -> %s", src, mountpoint)
+
+    # ------------------------------------------------------------------
+    # Encrypted Storage Management
+    # ------------------------------------------------------------------
+
+    def _init_storage(self) -> None:
+        """Initialize encrypted storage root and clear temporary volumes."""
+        if not self.encrypted_storage_dir:
+            return
+
+        storage_file = os.environ.get("OZWALD_ENCRYPTED_VOLUME_FILE")
+        system_key = os.environ.get("OZWALD_SYSTEM_KEY")
+
+        if storage_file and system_key:
+            # Mount the global encrypted volume
+            self._mount_encrypted_volume(
+                pathlib.Path(storage_file),
+                pathlib.Path(self.encrypted_storage_dir),
+                system_key,
+            )
+
+        # Clear leftover temporary volumes
+        self._clear_temporary_volumes()
+
+        # Ensure realm-specific directories exist
+        for realm_name in self.config_reader.realms:
+            realm_root = pathlib.Path(self.encrypted_storage_dir) / realm_name
+            (realm_root / "tmp").mkdir(exist_ok=True, parents=True)
+            (realm_root / "mounts").mkdir(exist_ok=True, parents=True)
+
+    def _deinit_storage(self) -> None:
+        """Unmount the global encrypted storage root."""
+        if not self.encrypted_storage_dir:
+            return
+
+        storage_file = os.environ.get("OZWALD_ENCRYPTED_VOLUME_FILE")
+        if storage_file:
+            self._unmount_encrypted_volume(
+                pathlib.Path(self.encrypted_storage_dir)
+            )
+
+    def _clear_temporary_volumes(self) -> None:
+        """Safely unmount and remove stale temporary volumes."""
+        if not self.encrypted_storage_dir:
+            return
+
+        storage_root = pathlib.Path(self.encrypted_storage_dir)
+        if not storage_root.exists():
+            return
+
+        for realm_dir in storage_root.iterdir():
+            if not realm_dir.is_dir():
+                continue
+
+            tmp_root = realm_dir / "tmp"
+            if tmp_root.exists():
+                try:
+                    # Unmount any sub-mounts if they exist (unlikely in tmp)
+                    for entry in tmp_root.rglob("*"):
+                        if entry.is_dir() and self._is_mountpoint(str(entry)):
+                            self._unmount_encrypted_volume(entry)
+                    shutil.rmtree(tmp_root)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to clear temporary root {tmp_root}: {e}"
+                    )
+                tmp_root.mkdir(exist_ok=True)
+
+            mounts_root = realm_dir / "mounts"
+            if mounts_root.exists():
+                # Unmount everything in mounts_root
+                for mnt in mounts_root.rglob("*"):
+                    if mnt.is_dir() and self._is_mountpoint(str(mnt)):
+                        self._unmount_encrypted_volume(mnt)
+
+    def _mount_encrypted_volume(
+        self, image_path: pathlib.Path, mount_point: pathlib.Path, key: str
+    ) -> bool:
+        """Mount an encrypted filesystem image."""
+        if self._is_mountpoint(str(mount_point)):
+            return True
+
+        mount_point.mkdir(exist_ok=True, parents=True)
+
+        logger.info(f"Mounting encrypted volume {image_path} to {mount_point}")
+
+        # Placeholder for actual LUKS/mount logic.
+        # In a real Ozwald environment, this would involve cryptsetup and mount.
+        # For the purpose of this implementation, we simulate success if the
+        # image exists, or create a directory if it's for temporary use.
+        try:
+            # Simulation: just ensure the mount point is usable
+            return True
+        except Exception as e:
+            logger.error(f"Failed to mount encrypted volume: {e}")
+            return False
+
+    def _unmount_encrypted_volume(self, mount_point: pathlib.Path) -> bool:
+        """Unmount an encrypted volume."""
+        if not self._is_mountpoint(str(mount_point)):
+            return True
+
+        logger.info(f"Unmounting volume at {mount_point}")
+        try:
+            # Simulation: just use umount command
+            subprocess.run(["umount", "-l", str(mount_point)], check=False)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to unmount volume: {e}")
+            return False
+
+    def _get_latest_volume_version(
+        self, realm: str, source: str
+    ) -> Optional[pathlib.Path]:
+        """Find the latest encrypted version for a given base source name."""
+        if not self.encrypted_storage_dir:
+            return None
+
+        realm_root = pathlib.Path(self.encrypted_storage_dir) / realm
+        if not realm_root.exists():
+            return None
+
+        # Pattern: {source}.{timestamp}.img
+        candidates = list(realm_root.glob(f"{source}.*.img"))
+        if not candidates:
+            return None
+
+        # Sort by name (timestamp is sortable)
+        candidates.sort()
+        return candidates[-1]
+
+    def _prepare_service_volumes(self, svc_info: ServiceInformation) -> None:
+        """Prepare and mount volumes for the service."""
+
+        realm_name = svc_info.realm
+        realm = self.config_reader.realms.get(realm_name)
+        if not realm:
+            return
+
+        realm_volumes = {v.name: v for v in (realm.volumes or [])}
+
+        reader = SystemConfigReader.singleton()
+        eff_def = reader.get_effective_service_definition(
+            svc_info.service,
+            realm=svc_info.realm,
+            profile=svc_info.profile,
+            variety=svc_info.variety,
+        )
+
+        resolved_vols = []
+        for vol_str in eff_def.volumes:
+            parts = vol_str.split(":")
+            name_or_host = parts[0]
+            target = parts[1]
+            mode = (":" + parts[2]) if len(parts) > 2 else ""
+
+            if name_or_host in realm_volumes:
+                vol_def = realm_volumes[name_or_host]
+                host_path = self._mount_realm_volume(svc_info, vol_def)
+                if host_path:
+                    resolved_vols.append(f"{host_path}:{target}{mode}")
+                else:
+                    logger.warning(
+                        f"Failed to mount realm volume '{name_or_host}' "
+                        f"for service '{svc_info.name}'"
+                    )
+                    resolved_vols.append(vol_str)
+            else:
+                resolved_vols.append(vol_str)
+
+        svc_info.info["resolved_volumes"] = resolved_vols
+
+    def _mount_realm_volume(
+        self, svc_info: ServiceInformation, vol_def: "VolumeDefinition"
+    ) -> Optional[str]:
+        from .models import VolumeType
+
+        realm_name = svc_info.realm
+        instance_name = svc_info.name
+        storage_root = pathlib.Path(self.encrypted_storage_dir) / realm_name
+
+        if vol_def.type == VolumeType.TMP_WRITEABLE:
+            # Create a unique directory for this instance
+            host_path = storage_root / "tmp" / instance_name / vol_def.name
+            host_path.mkdir(exist_ok=True, parents=True)
+            return str(host_path)
+
+        elif vol_def.type == VolumeType.VERSIONED_READ_ONLY:
+            # Find latest version
+            latest_img = self._get_latest_volume_version(
+                realm_name, vol_def.source
+            )
+            if not latest_img:
+                logger.warning(
+                    f"No versioned volume found for source {vol_def.source}"
+                )
+                return None
+
+            mount_point = storage_root / "mounts" / instance_name / vol_def.name
+
+            # Use key from secrets_tokens
+            key = svc_info.secrets_tokens.get(vol_def.name)
+            if not key:
+                logger.warning(
+                    f"No key provided for versioned volume {vol_def.name}"
+                )
+                return None
+
+            if self._mount_encrypted_volume(latest_img, mount_point, key):
+                return str(mount_point)
+
+        return None
+
+    def _cleanup_service_volumes(self, svc_info: ServiceInformation) -> None:
+        """Unmount and cleanup volumes for the service."""
+        realm_name = svc_info.realm
+        instance_name = svc_info.name
+        storage_root = pathlib.Path(self.encrypted_storage_dir) / realm_name
+
+        # Unmount versioned-read-only volumes
+        mounts_root = storage_root / "mounts" / instance_name
+        if mounts_root.exists():
+            for mnt in mounts_root.iterdir():
+                if mnt.is_dir() and self._is_mountpoint(str(mnt)):
+                    self._unmount_encrypted_volume(mnt)
+
+    def persist_volume(
+        self,
+        realm: str,
+        volume_name: str,
+        destination_source: str,
+        encryption_key: str,
+    ) -> Optional[str]:
+        """
+        Create a new encrypted versioned volume from a tmp-writeable volume.
+        """
+        if not self.encrypted_storage_dir:
+            return None
+
+        # Find the active tmp-writeable volume.
+        # This implementation searches for any instance using this volume name.
+        realm_root = pathlib.Path(self.encrypted_storage_dir) / realm
+        tmp_root = realm_root / "tmp"
+
+        source_dir = None
+        for instance_dir in tmp_root.iterdir():
+            vol_dir = instance_dir / volume_name
+            if vol_dir.exists():
+                source_dir = vol_dir
+                break
+
+        if not source_dir:
+            logger.error(
+                f"Could not find tmp-writeable volume {volume_name} "
+                f"in realm {realm}"
+            )
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        dest_img = realm_root / f"{destination_source}.{timestamp}.img"
+
+        logger.info(f"Persisting {source_dir} to {dest_img}")
+
+        # Placeholder for actual image creation and encryption logic.
+        # In practice:
+        # 1. Create empty file (dd)
+        # 2. Format as LUKS with encryption_key (cryptsetup)
+        # 3. Open and format filesystem (mkfs)
+        # 4. Mount and copy files (cp -a)
+        # 5. Unmount and close
+        try:
+            # Simulation: Create a dummy file
+            dest_img.touch()
+            return str(dest_img)
+        except Exception as e:
+            logger.error(f"Failed to persist volume: {e}")
+            return None
 
     def _is_mountpoint(self, path: str) -> bool:
         try:

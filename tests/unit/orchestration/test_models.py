@@ -1,9 +1,35 @@
 from orchestration.models import (
     FootprintConfig,
+    Realm,
     ServiceDefinition,
     ServiceDefinitionProfile,
     ServiceDefinitionVariety,
+    VolumeDefinition,
+    VolumeType,
 )
+
+
+class TestVolumeDefinition:
+    def test_volume_definition_parsing(self):
+        data = {
+            "name": "data-vol",
+            "type": "tmp-writeable",
+            "source": "data",
+        }
+        vol = VolumeDefinition(**data)
+        assert vol.name == "data-vol"
+        assert vol.type == VolumeType.TMP_WRITEABLE
+        assert vol.source == "data"
+
+
+class TestRealmWithVolumes:
+    def test_realm_volumes_list(self):
+        vol = VolumeDefinition(
+            name="v1", type=VolumeType.VERSIONED_READ_ONLY, source="src1"
+        )
+        realm = Realm(name="test-realm", volumes=[vol])
+        assert len(realm.volumes) == 1
+        assert realm.volumes[0].name == "v1"
 
 
 class TestFootprintConfig:

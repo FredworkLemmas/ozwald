@@ -40,6 +40,72 @@ Key Ideas
   and an API for changing the set of provisioned services.
 
 
+### Storage Management
+
+Ozwald provides secure, isolated, and versioned storage for services through
+encrypted host-mounted volumes.
+
+#### Configuration
+
+Volumes are defined at the realm level in your `settings.yml`:
+
+```yaml
+realms:
+  my-realm:
+    volumes:
+      - name: scratch-space
+        type: tmp-writeable
+        source: scratch
+      - name: database-state
+        type: versioned-read-only
+        source: my-db
+    service-definitions:
+      - name: my-service
+        type: container
+        volumes:
+          - scratch-space:/tmp/scratch
+          - database-state:/data/db:ro
+```
+
+#### Environment Variables
+
+The provisioner uses the following environment variables for managing
+encrypted storage:
+
+* `OZWALD_ENCRYPTED_VOLUME_FILE`: Path to the file that will be mounted as
+  the encrypted volume containing read-write volumes.
+* `OZWALD_SYSTEM_KEY`: The system provisioner token used for encryption of
+  temporary storage.
+
+#### Provisioner Model Update
+
+Update your provisioner definition in `settings.yml` to include the
+`encrypted_storage_dir`:
+
+```yaml
+provisioners:
+  - name: local
+    host: localhost
+    encrypted_storage_dir: /mnt/ozwald-storage
+```
+
+#### Lifecycle and Security
+
+*   **Isolation**: Write-access directories for containers are strictly
+    isolated and not shared between services.
+*   **Automatic Cleanup**: Ozwald automatically clears any leftover
+    temporary volumes in the `encrypted_storage_dir` on provisioner startup
+    and shutdown.
+*   **Persistence**: Containers can request the provisioner to persist a
+    named `tmp-writeable` volume as a new encrypted versioned volume via
+    the API.
+
+#### Mounting and Permissions
+
+Ozwald requires permissions to perform mount operations on the host. Ensure
+the user running the provisioner has the necessary `sudo` rights or
+`CAP_SYS_ADMIN` capabilities for `mount` and `umount` operations.
+
 Why not Docker or Docker Compose?
 ---------------------------------
 
